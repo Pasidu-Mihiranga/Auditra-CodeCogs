@@ -45,6 +45,7 @@ export default function EmployeeFormPage() {
   const [emailError, setEmailError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
   const fileRef = useRef();
 
   const handleChange = (e) => {
@@ -92,6 +93,11 @@ export default function EmployeeFormPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+   const handleChange1 = (e) => {
+    if (e.target.name === 'email' && emailError) setEmailError('');
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   const inputSx = { '& .MuiOutlinedInput-root': { borderRadius: '8px', '&:hover fieldset': { borderColor: '#1565C0' } } };
@@ -171,6 +177,8 @@ export default function EmployeeFormPage() {
           </svg>
         </Box>
       </Box>
+
+      
 
       {/* Form Section */}
       <Container maxWidth="md" sx={{ py: { xs: 4, md: 6 }, mt: { xs: -2, md: -3 } }}>
