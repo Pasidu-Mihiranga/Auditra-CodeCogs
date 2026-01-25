@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Box, TextField, Button, Typography, Alert, Grid, Container, Paper, Divider,
 } from '@mui/material';
@@ -7,6 +7,7 @@ import {
   Send, ArrowBack, ArrowForward, PersonOutline, Handshake,
 } from '@mui/icons-material';
 import axiosClient from '../../api/axiosClient';
+import SuccessOverlay from '../../components/SuccessOverlay';
 
 /* ------------------------------------------------------------------ */
 /*  Section heading with blue underline                                */
@@ -91,6 +92,7 @@ const TypeCard = ({ icon: Icon, title, description, onClick }) => (
 );
 
 export default function ClientFormPage() {
+  const navigate = useNavigate();
   const [regType, setRegType] = useState(null); // null | 'direct' | 'agent'
   const [form, setForm] = useState({
     first_name: '', last_name: '', address: '', phone: '', nic: '', email: '',
@@ -98,15 +100,73 @@ export default function ClientFormPage() {
     agent_name: '', agent_phone: '', agent_email: '',
   });
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [agentPhoneError, setAgentPhoneError] = useState('');
+  const [nicError, setNicError] = useState('');
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleRedirectAfterSuccess = useCallback(() => {
+    navigate('/');
+  }, [navigate]);
+
+  const validatePhone = (phone) => {
+    if (!phone) return '';
+    if (!/^\d+$/.test(phone)) return 'Phone number must contain only digits';
+    if (phone.length !== 10) return 'Phone number must be exactly 10 digits';
+    if (!phone.startsWith('0')) return 'Phone number must start with 0';
+    return '';
+  };
+
+  const validateNIC = (nic) => {
+    if (!nic) return '';
+    // Old format: 9 digits + V or X (total 10 characters)
+    // New format: 12 digits
+    const oldNICRegex = /^\d{9}[VX]$/;
+    const newNICRegex = /^\d{12}$/;
+
+    if (oldNICRegex.test(nic) || newNICRegex.test(nic)) {
+      return '';
+    }
+    return 'NIC must be either 9 digits + V/X (old format) or 12 digits (new format)';
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'phone') {
+      setPhoneError(validatePhone(value));
+    } else if (name === 'agent_phone') {
+      setAgentPhoneError(validatePhone(value));
+    } else if (name === 'nic') {
+      setNicError(validateNIC(value));
+    }
+    setForm({ ...form, [name]: value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
+
+    // Validate phone fields
+    const phoneValidationError = validatePhone(form.phone);
+    const agentPhoneValidationError = validatePhone(form.agent_phone);
+
+    if (form.phone && phoneValidationError) {
+      setPhoneError(phoneValidationError);
+      return;
+    }
+    if (form.agent_phone && agentPhoneValidationError) {
+      setAgentPhoneError(agentPhoneValidationError);
+      return;
+    }
+
+    // Validate NIC
+    const nicValidationError = validateNIC(form.nic);
+    if (form.nic && nicValidationError) {
+      setNicError(nicValidationError);
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = { ...form };
@@ -116,13 +176,13 @@ export default function ClientFormPage() {
         delete payload.agent_email;
       }
       await axiosClient.post('/clients/register/', payload);
-      setSuccess('Registration submitted successfully! We will contact you soon.');
       setForm({
         first_name: '', last_name: '', address: '', phone: '', nic: '', email: '',
         company_name: '', project_title: '', project_description: '',
         agent_name: '', agent_phone: '', agent_email: '',
       });
       setRegType(null);
+      setShowSuccessOverlay(true);
     } catch (err) {
       const data = err.response?.data;
       if (data && typeof data === 'object') {
@@ -140,6 +200,13 @@ export default function ClientFormPage() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9' }}>
+      {showSuccessOverlay && (
+        <SuccessOverlay
+          title="Registration Submitted!"
+          message="We will review your registration and contact you soon."
+          onComplete={handleRedirectAfterSuccess}
+        />
+      )}
       {/* White top spacer */}
       <Box sx={{ bgcolor: '#fff', height: { xs: 44, md: 44 } }} />
 
@@ -233,12 +300,7 @@ export default function ClientFormPage() {
               bgcolor: '#fff',
             }}
           >
-            {success && (
-              <Alert severity="success" sx={{ borderRadius: 0 }}>
-                {success}
-              </Alert>
-            )}
-            <Box sx={{ p: { xs: 3, sm: 5 } }}>
+          <Box sx={{ p: { xs: 3, sm: 5 } }}>
               <SectionHeading>Registration Type</SectionHeading>
               <Typography variant="body2" sx={{ color: '#64748B', mb: 3 }}>
                 Select how you would like to register with us
@@ -274,7 +336,6 @@ export default function ClientFormPage() {
             }}
           >
             {error && <Alert severity="error" sx={{ borderRadius: 0, whiteSpace: 'pre-line' }}>{error}</Alert>}
-            {success && <Alert severity="success" sx={{ borderRadius: 0 }}>{success}</Alert>}
 
             {/* Type indicator + change link */}
             <Box
@@ -296,7 +357,7 @@ export default function ClientFormPage() {
               </Box>
               <Button
                 size="small"
-                onClick={() => { setRegType(null); setError(''); setSuccess(''); }}
+                onClick={() => { setRegType(null); setError(''); }}
                 sx={{
                   textTransform: 'none',
                   color: '#64748B',
@@ -317,8 +378,8 @@ export default function ClientFormPage() {
                   <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" name="first_name" value={form.first_name} onChange={handleChange} sx={inputSx} /></Grid>
                   <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" name="last_name" value={form.last_name} onChange={handleChange} sx={inputSx} /></Grid>
                   <Grid item xs={12}><TextField fullWidth label="Address" name="address" value={form.address} onChange={handleChange} sx={inputSx} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" name="phone" value={form.phone} onChange={handleChange} sx={inputSx} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="NIC" name="nic" value={form.nic} onChange={handleChange} sx={inputSx} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" name="phone" value={form.phone} onChange={handleChange} error={!!phoneError} helperText={phoneError} sx={inputSx} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="NIC" name="nic" value={form.nic} onChange={handleChange} error={!!nicError} helperText={nicError} sx={inputSx} /></Grid>
                   <Grid item xs={12}><TextField fullWidth label="Email" name="email" type="email" value={form.email} onChange={handleChange} required sx={inputSx} /></Grid>
                   <Grid item xs={12}><TextField fullWidth label="Company Name" name="company_name" value={form.company_name} onChange={handleChange} sx={inputSx} /></Grid>
                 </Grid>
@@ -343,7 +404,7 @@ export default function ClientFormPage() {
                     <SectionHeading>Agent Information</SectionHeading>
                     <Grid container spacing={2.5}>
                       <Grid item xs={12}><TextField fullWidth label="Agent Name" name="agent_name" value={form.agent_name} onChange={handleChange} required sx={inputSx} /></Grid>
-                      <Grid item xs={12} sm={6}><TextField fullWidth label="Agent Phone" name="agent_phone" value={form.agent_phone} onChange={handleChange} required sx={inputSx} /></Grid>
+                      <Grid item xs={12} sm={6}><TextField fullWidth label="Agent Phone" name="agent_phone" value={form.agent_phone} onChange={handleChange} error={!!agentPhoneError} helperText={agentPhoneError} required sx={inputSx} /></Grid>
                       <Grid item xs={12} sm={6}><TextField fullWidth label="Agent Email" name="agent_email" type="email" value={form.agent_email} onChange={handleChange} required sx={inputSx} /></Grid>
                     </Grid>
                   </Box>

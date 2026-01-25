@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
@@ -1126,6 +1127,7 @@ class ClientRegistrationView(APIView):
 class EmployeeRegistrationView(APIView):
     """API endpoint for employee registration form submission"""
     permission_classes = (AllowAny,)
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def post(self, request):
         try:
@@ -1138,7 +1140,7 @@ class EmployeeRegistrationView(APIView):
                     'field': 'email'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            serializer = EmployeeFormSubmissionSerializer(data=request.data)
+            serializer = EmployeeFormSubmissionSerializer(data=request.data, context={'request': request})
             if serializer.is_valid():
                 submission = serializer.save()
                 try:
@@ -2069,7 +2071,7 @@ class AllEmployeeSubmissionsView(APIView):
 
         paginator = SubmissionPagination()
         page = paginator.paginate_queryset(queryset, request)
-        serializer = EmployeeFormSubmissionSerializer(page, many=True)
+        serializer = EmployeeFormSubmissionSerializer(page, many=True, context={'request': request})
         response = paginator.get_paginated_response(serializer.data)
         response.data['summary'] = summary
         return response
@@ -2084,7 +2086,7 @@ class EmployeeSubmissionDetailView(APIView):
             return Response({'error': 'Only admins can view submissions'}, status=status.HTTP_403_FORBIDDEN)
         try:
             submission = EmployeeFormSubmission.objects.get(pk=pk)
-            serializer = EmployeeFormSubmissionSerializer(submission)
+            serializer = EmployeeFormSubmissionSerializer(submission, context={'request': request})
             return Response(serializer.data)
         except EmployeeFormSubmission.DoesNotExist:
             return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)

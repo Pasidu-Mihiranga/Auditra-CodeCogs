@@ -276,15 +276,26 @@ class ClientFormSubmissionSerializer(serializers.ModelSerializer):
 
 class EmployeeFormSubmissionSerializer(serializers.ModelSerializer):
     """Serializer for Employee Form Submission"""
-    
+
     class Meta:
         model = EmployeeFormSubmission
         fields = (
-            'id', 'first_name', 'last_name', 'email', 'address', 
-            'phone', 'birthday', 'nic', 'cv', 'status', 
+            'id', 'first_name', 'last_name', 'email', 'address',
+            'phone', 'birthday', 'nic', 'cv', 'status',
             'submitted_at', 'reviewed_at', 'notes', 'reviewed_by'
         )
         read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by')
+
+    def to_representation(self, instance):
+        """Override to return absolute URL for CV file"""
+        data = super().to_representation(instance)
+        if data.get('cv') and instance.cv:
+            request = self.context.get('request')
+            if request:
+                data['cv'] = request.build_absolute_uri(instance.cv.url)
+            else:
+                data['cv'] = instance.cv.url
+        return data
 
 
 class LeaveRequestSerializer(serializers.ModelSerializer):

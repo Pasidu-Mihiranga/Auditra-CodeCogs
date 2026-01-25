@@ -4,17 +4,19 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
-// Request interceptor - attach access token
+// Request interceptor - attach access token and set Content-Type
 axiosClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // For FormData, let the browser set Content-Type with the correct boundary.
+    // For everything else, default to JSON.
+    if (!(config.data instanceof FormData)) {
+      config.headers['Content-Type'] = 'application/json';
     }
     return config;
   },

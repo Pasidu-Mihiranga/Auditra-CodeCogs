@@ -14,6 +14,7 @@ import {
   KeyboardArrowDown as ExpandMoreIcon,
   KeyboardArrowUp as ExpandLessIcon,
   Download as DownloadIcon,
+  Visibility as VisibilityIcon,
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
 import PendingIcon from '@mui/icons-material/Pending';
@@ -274,10 +275,6 @@ export default function EmployeeSubmissions() {
     setPage(0);
   };
 
-  /* ================================================================ */
-  /*  Render                                                           */
-  /* ================================================================ */
-
   return (
     <Box>
       {/* Page Title */}
@@ -527,17 +524,46 @@ export default function EmployeeSubmissions() {
                                     CV
                                   </Typography>
                                   {sub.cv ? (
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      startIcon={<DownloadIcon />}
-                                      href={sub.cv}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      sx={{ textTransform: 'none', fontSize: '0.8rem' }}
-                                    >
-                                      Download CV
-                                    </Button>
+                                    <Box sx={{ display: 'flex', gap: 1 }}>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<VisibilityIcon />}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          window.open(sub.cv, '_blank', 'noopener,noreferrer');
+                                        }}
+                                        sx={{ textTransform: 'none', fontSize: '0.8rem', flex: 1 }}
+                                      >
+                                        View
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<DownloadIcon />}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          try {
+                                            const response = await fetch(sub.cv);
+                                            const blob = await response.blob();
+                                            const url = window.URL.createObjectURL(blob);
+                                            const link = document.createElement('a');
+                                            link.href = url;
+                                            const filename = sub.cv.split('/').pop() || `${sub.full_name}_CV`;
+                                            link.download = filename;
+                                            document.body.appendChild(link);
+                                            link.click();
+                                            document.body.removeChild(link);
+                                            window.URL.revokeObjectURL(url);
+                                          } catch (err) {
+                                            console.error('Download failed:', err);
+                                          }
+                                        }}
+                                        sx={{ textTransform: 'none', fontSize: '0.8rem', flex: 1 }}
+                                      >
+                                        Download
+                                      </Button>
+                                    </Box>
                                   ) : (
                                     <Typography variant="body2">Not uploaded</Typography>
                                   )}

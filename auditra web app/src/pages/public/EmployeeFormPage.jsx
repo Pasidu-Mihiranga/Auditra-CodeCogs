@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useRef, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Box, TextField, Button, Typography, Alert, Grid, Container, Paper, Stack, Divider,
 } from '@mui/material';
 import { Upload, Send, ArrowBack } from '@mui/icons-material';
 import authService from '../../services/authService';
+import SuccessOverlay from '../../components/SuccessOverlay';
 
 /* ------------------------------------------------------------------ */
 /*  Section heading with blue underline                                */
@@ -37,20 +38,55 @@ const SectionHeading = ({ children }) => (
 );
 
 export default function EmployeeFormPage() {
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     first_name: '', last_name: '', address: '', phone: '', birthday: '', nic: '', email: '',
   });
   const [cvFile, setCvFile] = useState(null);
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [nicError, setNicError] = useState('');
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fileRef = useRef();
 
+  const handleRedirectAfterSuccess = useCallback(() => {
+    navigate('/');
+  }, [navigate]);
+
+  const validatePhone = (phone) => {
+    if (!phone) return '';
+    if (!/^\d+$/.test(phone)) return 'Phone number must contain only digits';
+    if (phone.length !== 10) return 'Phone number must be exactly 10 digits';
+    if (!phone.startsWith('0')) return 'Phone number must start with 0';
+    return '';
+  };
+
+  const validateNIC = (nic) => {
+    if (!nic) return '';
+    // Old format: 9 digits + V or X (total 10 characters)
+    // New format: 12 digits
+    const oldNICRegex = /^\d{9}[VX]$/;
+    const newNICRegex = /^\d{12}$/;
+
+    if (oldNICRegex.test(nic) || newNICRegex.test(nic)) {
+      return '';
+    }
+    return 'NIC must be either 9 digits + V/X (old format) or 12 digits (new format)';
+  };
+
   const handleChange = (e) => {
-    if (e.target.name === 'email' && emailError) setEmailError('');
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'email' && emailError) setEmailError('');
+    if (name === 'phone') {
+      setPhoneError(validatePhone(value));
+    }
+    if (name === 'nic') {
+      setNicError(validateNIC(value));
+    }
+    setForm({ ...form, [name]: value });
   };
 
   const handleFileChange = (e) => {
@@ -71,15 +107,31 @@ export default function EmployeeFormPage() {
     e.preventDefault();
     setError('');
     setEmailError('');
-    setSuccess('');
+    setPhoneError('');
+    setNicError('');
+
+    // Validate phone
+    const phoneValidationError = validatePhone(form.phone);
+    if (form.phone && phoneValidationError) {
+      setPhoneError(phoneValidationError);
+      return;
+    }
+
+    // Validate NIC
+    const nicValidationError = validateNIC(form.nic);
+    if (form.nic && nicValidationError) {
+      setNicError(nicValidationError);
+      return;
+    }
+
     setLoading(true);
     try {
       const data = { ...form };
       if (cvFile) data.cv = cvFile;
       await authService.registerEmployee(data);
-      setSuccess('Application submitted successfully! We will review and contact you.');
       setForm({ first_name: '', last_name: '', address: '', phone: '', birthday: '', nic: '', email: '' });
       setCvFile(null);
+      setShowSuccessOverlay(true);
     } catch (err) {
       const data = err.response?.data;
       if (data?.field === 'email') {
@@ -104,6 +156,7 @@ export default function EmployeeFormPage() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9' }}>
+      {showSuccessOverlay && <SuccessOverlay onComplete={handleRedirectAfterSuccess} />}
       {/* White top spacer */}
       <Box sx={{ bgcolor: '#fff', height: { xs: 44, md: 44 } }} />
 
@@ -191,7 +244,6 @@ export default function EmployeeFormPage() {
           }}
         >
           {error && <Alert severity="error" sx={{ borderRadius: 0, whiteSpace: 'pre-line' }}>{error}</Alert>}
-          {success && <Alert severity="success" sx={{ borderRadius: 0 }}>{success}</Alert>}
 
           <form onSubmit={handleSubmit}>
             {/* Section 1: Personal Information */}
@@ -201,12 +253,12 @@ export default function EmployeeFormPage() {
                 <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" name="first_name" value={form.first_name} onChange={handleChange} required sx={inputSx} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" name="last_name" value={form.last_name} onChange={handleChange} required sx={inputSx} /></Grid>
                 <Grid item xs={12}><TextField fullWidth label="Address" name="address" value={form.address} onChange={handleChange} sx={inputSx} /></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" name="phone" value={form.phone} onChange={handleChange} sx={inputSx} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" name="phone" value={form.phone} onChange={handleChange} error={!!phoneError} helperText={phoneError} sx={inputSx} /></Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="Birthday" name="birthday" type="date" value={form.birthday} onChange={handleChange} required
-                    InputLabelProps={{ shrink: true }} sx={inputSx} />
+                    InputLabelProps={{ shrink: true }} inputProps={{ max: new Date().toISOString().split('T')[0] }} sx={inputSx} />
                 </Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth label="NIC" name="nic" value={form.nic} onChange={handleChange} sx={inputSx} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="NIC" name="nic" value={form.nic} onChange={handleChange} error={!!nicError} helperText={nicError} sx={inputSx} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="Email" name="email" type="email" value={form.email} onChange={handleChange} error={!!emailError} helperText={emailError} sx={inputSx} /></Grid>
               </Grid>
             </Box>

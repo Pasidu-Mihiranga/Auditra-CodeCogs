@@ -33,9 +33,7 @@ const authService = {
     Object.entries(data).forEach(([key, value]) => {
       if (value != null && value !== '') formData.append(key, value);
     });
-    return axiosClient.post('/employees/register/', formData, {
-      headers: { 'Content-Type': undefined },
-    });
+    return axiosClient.post('/employees/register/', formData);
   },
 
   // Assignment response methods for coordinators
