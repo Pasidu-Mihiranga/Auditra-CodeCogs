@@ -9,7 +9,6 @@ export default function StatusChip({ status, label }) {
       size="small"
       sx={{
         bgcolor: `${color}15`,
-        bgcolor: `${color}15`,
         color: color,
         fontWeight: 600,
         textTransform: 'capitalize',
