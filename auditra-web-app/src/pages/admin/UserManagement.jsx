@@ -52,6 +52,18 @@ export default function UserManagement() {
     if (!deleteConfirm) return;
     setError('');
     try {
+      const [usersRes, rolesRes] = await Promise.all([
+        authService.getAllUsers(),
+        authService.getAvailableRoles(),
+      ]);
+      setUsers(Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.users || []);
+      const rolesData = rolesRes.data?.roles || rolesRes.data;
+      setRoles(Array.isArray(rolesData) ? rolesData : []);
+    } catch {
+      setError('Failed to load users');
+    } finally {
+      setLoading(false);
+    try {
       await authService.deleteUser(deleteConfirm);
       setSuccess('User deleted');
       setDeleteConfirm(null);
@@ -135,4 +147,5 @@ export default function UserManagement() {
       />
     </Box>
   );
+}
 }

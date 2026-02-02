@@ -138,22 +138,6 @@ export default function LoginPage() {
       setFpLoading(false);
     }
   };
-  const handle1Submit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const result = await login(username, password);
-      if (result.passwordChanged === false) {
-        navigate('/dashboard/force-change-password');
-      } else {
-        navigate('/dashboard');
-      }
-    } catch (err) {
-      setError(err.response?.data?.detail || err.response?.data?.error || 'Login failed. Please check your credentials.');
-    } finally {
-      setLoading(false);
-    }
 
   /* ================================================================ */
   /*  Render — Right panel content                                     */
@@ -511,5 +495,4 @@ export default function LoginPage() {
       </Grid>
     </Box>
   );
-}
 }
