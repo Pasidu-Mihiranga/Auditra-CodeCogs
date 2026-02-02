@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
+import '../services/offline_db_service.dart';
+import '../services/offline_storage_service.dart';
+import '../services/network_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import 'login_screen.dart';
 import 'change_password_screen.dart';
 import 'valuation_form_screen.dart';
 import 'payment_slips_screen.dart';
+import 'notifications_screen.dart';
+import 'profile_screen.dart';
 // import 'field_officer/components/field_officer_header.dart'; // Removed
 import 'field_officer/components/field_officer_project_card.dart';
 import 'field_officer/screens/project_details_screen.dart'; // Added
 import 'field_officer/screens/valuation_reports_screen.dart'; // Added
+import 'visit_scheduling_screen.dart';
 import '../theme/app_colors.dart';
 import '../widgets/sync_status_indicator.dart';
 
@@ -46,6 +53,8 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   // Leave statistics state
   Map<String, dynamic>? _leaveStatistics;
   bool _isLoadingLeaveStats = false;
+  StreamSubscription<bool>? _networkSubscription;
+  bool _wasOnline = true;
 
   @override
   void initState() {
@@ -57,13 +66,40 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       }
     });
     _loadUserInfo();
+    _loadCachedProjectsOnStartup();
     _loadProjects();
+    _setupNetworkAutoRefresh();
   }
 
   @override
   void dispose() {
+    _networkSubscription?.cancel();
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _setupNetworkAutoRefresh() async {
+    if (!NetworkService.isInitialized) {
+      await NetworkService.init();
+    }
+    _wasOnline = NetworkService.isOnline;
+    _networkSubscription = NetworkService.networkStatusStream.listen((isOnline) {
+      if (!mounted) return;
+      // Auto refresh only on offline -> online transition.
+      if (!_wasOnline && isOnline) {
+        _loadProjects();
+        _loadTodayAttendance();
+        _loadSummary();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Back online. Data refreshed automatically.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      _wasOnline = isOnline;
+    });
   }
 
   Future<void> _loadUserInfo() async {
@@ -164,6 +200,8 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           try {
             final data = result['data'] as List<dynamic>;
             _projects = data.map((p) => Project.fromJson(p)).toList();
+            // Keep a local cache for offline project loading.
+            OfflineStorageService.cacheProjects(_projects);
           } catch (e) {
             print('Error parsing projects: $e');
             print('Response data: ${result['data']}');
@@ -175,14 +213,48 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             );
           }
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to load projects: ${result['message'] ?? 'Unknown error'}'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          final cached = OfflineStorageService.getCachedProjects();
+          if (cached != null && cached.isNotEmpty) {
+            _projects = cached;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Offline mode: showing cached projects.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          } else {
+            final rawMessage = (result['message'] ?? '').toString();
+            final isNetworkError = rawMessage.contains('Connection error') ||
+                rawMessage.contains('Network is unreachable') ||
+                rawMessage.contains('Connection failed') ||
+                rawMessage.contains('Failed host lookup');
+            final message = isNetworkError
+                ? 'You are offline. Projects will load when internet is back.'
+                : 'Failed to load projects: ${result['message'] ?? 'Unknown error'}';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         }
       });
+    }
+  }
+
+  Future<void> _loadCachedProjectsOnStartup() async {
+    try {
+      await OfflineDBService.initOfflineDB();
+      final cached = OfflineStorageService.getCachedProjects();
+      if (!mounted) return;
+      if (cached != null && cached.isNotEmpty) {
+        setState(() {
+          _projects = cached;
+        });
+      }
+    } catch (_) {
+      // Best-effort cache read; ignore and continue with live load.
     }
   }
 
@@ -197,12 +269,22 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
+  void _createReport(Project project) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ValuationFormScreen(project: project),
+      ),
+    ).then((_) => _loadProjects());
+  }
+
   Future<void> _submitToAccessor(Project project) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Submit Project'),
-        content: Text('Are you sure you want to submit "${project.title}" to the accessor for review?'),
+        title: const Text('Submit to Accessor'),
+        content: Text(
+          'Submit draft valuation report(s) for "${project.title}" to the accessor for review?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -222,13 +304,51 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       });
 
       try {
-        final result = await ApiService.submitProject(project.id);
-        
-        if (mounted) {
-          if (result['success']) {
+        // Pull latest project details so we submit the newest draft/rejected valuations.
+        final projectRes = await ApiService.getProject(project.id);
+        if (projectRes['success'] != true) {
+          throw Exception(projectRes['message'] ?? 'Failed to load latest project details');
+        }
+        final latestProject = Project.fromJson(projectRes['data']);
+        final valuationsToSubmit = latestProject.valuations
+            .where((v) => v.status == 'draft' || v.status == 'rejected')
+            .toList();
+
+        if (valuationsToSubmit.isEmpty) {
+          if (mounted) {
+            setState(() => _isLoadingProjects = false);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Project submitted to accessor successfully'),
+                content: Text('No draft reports to submit. Create or edit a valuation report first.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+
+        int successCount = 0;
+        int failedCount = 0;
+        String? firstError;
+        for (final valuation in valuationsToSubmit) {
+          final submitRes = await ApiService.submitValuation(valuation.id);
+          if (submitRes['success'] == true) {
+            successCount++;
+          } else {
+            failedCount++;
+            firstError ??= (submitRes['message'] ?? '').toString();
+          }
+        }
+        
+        if (mounted) {
+          if (failedCount == 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  successCount == 1
+                      ? '1 valuation report submitted to accessor successfully'
+                      : '$successCount valuation reports submitted to accessor successfully',
+                ),
                 backgroundColor: Colors.green,
               ),
             );
@@ -238,7 +358,11 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             setState(() => _isLoadingProjects = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Failed to submit project: ${result['message']}'),
+                content: Text(
+                  successCount > 0
+                      ? '$successCount submitted, $failedCount failed. ${firstError ?? ""}'.trim()
+                      : 'Failed to submit reports: ${firstError ?? "Unknown error"}',
+                ),
                 backgroundColor: Colors.red,
               ),
             );
@@ -591,8 +715,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
@@ -652,6 +777,16 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
               actions: [
                 const SyncStatusIndicator(),
                 IconButton(
+                  icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                  tooltip: 'Notifications',
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.person_outline, color: Colors.white),
+                  tooltip: 'Profile',
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
+                ),
+                IconButton(
                   icon: const Icon(Icons.logout, color: Colors.white),
                   onPressed: _logout,
                   tooltip: 'Logout',
@@ -662,7 +797,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                 indicatorColor: Colors.white,
                 indicatorWeight: 3,
                 labelColor: Colors.white,
-                unselectedLabelColor: Colors.blue[100],
+                unselectedLabelColor: isDark ? Colors.blueGrey[100] : Colors.blue[100],
                 labelStyle: const TextStyle(fontWeight: FontWeight.bold),
                 tabs: const [
                   Tab(text: 'Profile & Attendance'),
@@ -701,7 +836,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -709,7 +844,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                 children: [
                   const Text(
                     'Quick Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
                   _buildQuickActionTile(
@@ -788,7 +923,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                       project: project,
                       onViewDetails: _viewProjectDetails,
                       onViewReports: _viewValuationReports,
+                      onCreateReport: _createReport,
                       onSubmit: _submitToAccessor,
+                      onScheduleVisit: _openValuationSchedule,
                     );
                   },
                 ),
@@ -828,17 +965,30 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       ),
     );
   }
+
+  void _openValuationSchedule(Project project) {
+    Navigator.of(context)
+        .push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => VisitSchedulingScreen(
+          projectId: project.id,
+          projectTitle: project.title,
+          appBarTitle: 'Valuation schedule – ${project.title}',
+          fabLabel: 'Set valuation date',
+          emptyStateText:
+              'No valuation date scheduled. Tap the button to choose when you will visit the site.',
+          confirmDialogTitle: 'Confirm valuation date',
+          confirmDialogScheduleLabel: 'Set date',
+        ),
+      ),
+    )
+        .then((_) {
+      if (mounted) _loadProjects();
+    });
+  }
   
   Color _getPriorityColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return const Color(0xFF0D47A1);
-      case 'low':
-        return Colors.green[600]!;
-      case 'medium':
-      default:
-        return Colors.orange[600]!;
-    }
+    return AppColors.priorityColor(priority);
   }
   
   String _formatPriorityLabel(String priority) {

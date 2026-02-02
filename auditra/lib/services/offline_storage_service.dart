@@ -24,10 +24,11 @@ class OfflineStorageService {
     final localId = _uuid.v4();
     
     // Add offline metadata
+    // SyncStatus: 0=Queued, 1=Synced, 2=Syncing, 3=Failed
     final offlineValuation = {
       ...valuationData,
       'localId': localId,
-      'syncStatus': 0, // 0 = unsynced, 1 = synced
+      'syncStatus': 0, // 0 = Queued
       'serverId': null,
       'createdAt': DateTime.now().toIso8601String(),
       'updatedAt': DateTime.now().toIso8601String(),
@@ -53,17 +54,35 @@ class OfflineStorageService {
     }
   }
 
-  /// Get unsynced valuations (syncStatus = 0)
+  /// Get unsynced valuations.
+  ///
+  /// Includes:
+  ///   - Queued (`syncStatus == 0`)
+  ///   - Failed (`syncStatus == 3`) whose `nextRetryAt` has elapsed
+  ///     (exponential back-off, see [updateValuationSyncStatus]).
   static List<Map<String, dynamic>> getUnsyncedValuations() {
     if (!OfflineDBService.isInitialized) {
       return [];
     }
     try {
       final box = OfflineDBService.valuationsBox;
+      final now = DateTime.now();
       return box.values
           .where((value) {
             final map = Map<String, dynamic>.from(value as Map);
-            return map['syncStatus'] == 0;
+            final s = map['syncStatus'];
+            if (s == 0) return true;
+            if (s == 3) {
+              final ts = map['nextRetryAt'];
+              if (ts == null) return true;
+              try {
+                return DateTime.parse(ts).isBefore(now) ||
+                    DateTime.parse(ts).isAtSameMomentAs(now);
+              } catch (_) {
+                return true;
+              }
+            }
+            return false;
           })
           .map((value) => Map<String, dynamic>.from(value as Map))
           .toList();
@@ -85,6 +104,33 @@ class OfflineStorageService {
       // No need to keep it in local storage
       await box.delete(localId);
       print('✅ Valuation synced and removed from local storage: $localId -> serverId: $serverId');
+    }
+  }
+
+  /// Update syncStatus for a queued valuation (0=Queued,1=Synced,2=Syncing,3=Failed).
+  ///
+  /// On Failed (3), bumps `retryCount` and computes an exponential-back-off
+  /// `nextRetryAt` (capped at 1 hour).
+  static Future<void> updateValuationSyncStatus(String localId, int status) async {
+    if (!OfflineDBService.isInitialized) return;
+    final box = OfflineDBService.valuationsBox;
+    final valuation = box.get(localId);
+    if (valuation != null) {
+      final map = Map<String, dynamic>.from(valuation as Map);
+      map['syncStatus'] = status;
+      if (status == 3) {
+        final int attempts = ((map['retryCount'] as int?) ?? 0) + 1;
+        // 30s, 60s, 2min, 4min, 8min, 16min, 32min, 60min cap.
+        final seconds =
+            (30 * (1 << (attempts - 1).clamp(0, 7))).clamp(30, 3600);
+        map['retryCount'] = attempts;
+        map['nextRetryAt'] =
+            DateTime.now().add(Duration(seconds: seconds)).toIso8601String();
+      } else if (status == 1) {
+        map.remove('retryCount');
+        map.remove('nextRetryAt');
+      }
+      await box.put(localId, map);
     }
   }
 
@@ -251,6 +297,38 @@ class OfflineStorageService {
     await box.clear();
   }
 
+  /// Cache project visits for offline access by project id.
+  static Future<void> cacheProjectVisits(
+    int projectId,
+    List<Map<String, dynamic>> visits,
+  ) async {
+    if (!await OfflineDBService.isOfflineModeEnabled()) {
+      return;
+    }
+    if (!OfflineDBService.isInitialized) {
+      await OfflineDBService.initOfflineDB();
+    }
+    final box = OfflineDBService.projectsCacheBox;
+    await box.put('project_visits_$projectId', visits);
+    await box.put(
+      'project_visits_last_updated_$projectId',
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  /// Get cached project visits by project id.
+  static List<Map<String, dynamic>>? getCachedProjectVisits(int projectId) {
+    if (!OfflineDBService.isInitialized) return null;
+    try {
+      final box = OfflineDBService.projectsCacheBox;
+      final raw = box.get('project_visits_$projectId') as List<dynamic>?;
+      if (raw == null) return null;
+      return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Save attendance offline
   static Future<String> saveAttendanceOffline(Map<String, dynamic> attendanceData) async {
     if (!await OfflineDBService.isOfflineModeEnabled()) {
@@ -281,23 +359,53 @@ class OfflineStorageService {
     return box.values.map((value) => Map<String, dynamic>.from(value as Map)).toList();
   }
 
-  /// Get unsynced attendance records
+  /// Get unsynced attendance records (queued or retry-eligible failures).
   static List<Map<String, dynamic>> getUnsyncedAttendance() {
     if (!OfflineDBService.isInitialized) {
       return [];
     }
     try {
       final box = OfflineDBService.attendanceBox;
+      final now = DateTime.now();
       return box.values
           .where((value) {
             final map = Map<String, dynamic>.from(value as Map);
-            return map['syncStatus'] == 0;
+            final s = map['syncStatus'];
+            if (s == 0) return true;
+            if (s == 3) {
+              final ts = map['nextRetryAt'];
+              if (ts == null) return true;
+              try {
+                return DateTime.parse(ts).isBefore(now) ||
+                    DateTime.parse(ts).isAtSameMomentAs(now);
+              } catch (_) {
+                return true;
+              }
+            }
+            return false;
           })
           .map((value) => Map<String, dynamic>.from(value as Map))
           .toList();
     } catch (e) {
       return [];
     }
+  }
+
+  /// Mark an attendance record as Failed with exponential back-off (see
+  /// [updateValuationSyncStatus] for the same algorithm).
+  static Future<void> markAttendanceFailed(String localId) async {
+    if (!OfflineDBService.isInitialized) return;
+    final box = OfflineDBService.attendanceBox;
+    final record = box.get(localId);
+    if (record == null) return;
+    final map = Map<String, dynamic>.from(record as Map);
+    map['syncStatus'] = 3;
+    final int attempts = ((map['retryCount'] as int?) ?? 0) + 1;
+    final seconds = (30 * (1 << (attempts - 1).clamp(0, 7))).clamp(30, 3600);
+    map['retryCount'] = attempts;
+    map['nextRetryAt'] =
+        DateTime.now().add(Duration(seconds: seconds)).toIso8601String();
+    await box.put(localId, map);
   }
 
   /// Mark attendance as synced
@@ -370,17 +478,30 @@ class OfflineStorageService {
         .toList();
   }
 
-  /// Get unsynced photos
+  /// Get unsynced photos (queued or retry-eligible failures).
   static List<Map<String, dynamic>> getUnsyncedPhotos() {
     if (!OfflineDBService.isInitialized) {
       return [];
     }
     try {
       final box = OfflineDBService.photosCacheBox;
+      final now = DateTime.now();
       return box.values
           .where((value) {
             final map = Map<String, dynamic>.from(value as Map);
-            return map['syncStatus'] == 0;
+            final s = map['syncStatus'];
+            if (s == 0) return true;
+            if (s == 3) {
+              final ts = map['nextRetryAt'];
+              if (ts == null) return true;
+              try {
+                return DateTime.parse(ts).isBefore(now) ||
+                    DateTime.parse(ts).isAtSameMomentAs(now);
+              } catch (_) {
+                return true;
+              }
+            }
+            return false;
           })
           .map((value) => Map<String, dynamic>.from(value as Map))
           .toList();
@@ -393,13 +514,124 @@ class OfflineStorageService {
   static Future<void> markPhotoSynced(String photoId, int serverId) async {
     final box = OfflineDBService.photosCacheBox;
     final photo = box.get(photoId) as Map<String, dynamic>?;
-    
+
     if (photo != null) {
       photo['syncStatus'] = 1;
       photo['serverId'] = serverId;
       photo['syncedAt'] = DateTime.now().toIso8601String();
+      photo.remove('retryCount');
+      photo.remove('nextRetryAt');
       await box.put(photoId, photo);
     }
+  }
+
+  /// Mark a photo record as Failed with exponential back-off.
+  static Future<void> markPhotoFailed(String photoId) async {
+    final box = OfflineDBService.photosCacheBox;
+    final photo = box.get(photoId) as Map<String, dynamic>?;
+    if (photo == null) return;
+    photo['syncStatus'] = 3;
+    final int attempts = ((photo['retryCount'] as int?) ?? 0) + 1;
+    final seconds = (30 * (1 << (attempts - 1).clamp(0, 7))).clamp(30, 3600);
+    photo['retryCount'] = attempts;
+    photo['nextRetryAt'] =
+        DateTime.now().add(Duration(seconds: seconds)).toIso8601String();
+    await box.put(photoId, photo);
+  }
+
+  /// Queue a valuation submit action for automatic retry when online.
+  static Future<String> queueValuationSubmissionOffline({
+    required int valuationId,
+    int? projectId,
+    String? projectTitle,
+  }) async {
+    if (!await OfflineDBService.isOfflineModeEnabled()) {
+      throw Exception('Offline mode not enabled for this user');
+    }
+
+    if (!OfflineDBService.isInitialized) {
+      await OfflineDBService.initOfflineDB();
+    }
+
+    final box = OfflineDBService.syncQueueBox;
+    final localId = _uuid.v4();
+    await box.put(localId, {
+      'id': localId,
+      'type': 'valuation_submit',
+      'valuationId': valuationId,
+      if (projectId != null) 'projectId': projectId,
+      if (projectTitle != null && projectTitle.isNotEmpty) 'projectTitle': projectTitle,
+      'syncStatus': 0, // 0=Queued, 1=Synced, 2=Syncing, 3=Failed
+      'createdAt': DateTime.now().toIso8601String(),
+      'syncedAt': null,
+      'retryCount': 0,
+      'nextRetryAt': null,
+    });
+    return localId;
+  }
+
+  /// Get queued valuation submit actions (queued/retry-eligible failed).
+  static List<Map<String, dynamic>> getUnsyncedSubmitActions() {
+    if (!OfflineDBService.isInitialized) {
+      return [];
+    }
+    try {
+      final box = OfflineDBService.syncQueueBox;
+      final now = DateTime.now();
+      return box.values
+          .where((value) {
+            final map = Map<String, dynamic>.from(value as Map);
+            if (map['type'] != 'valuation_submit') return false;
+            final s = map['syncStatus'];
+            if (s == 0) return true;
+            if (s == 3) {
+              final ts = map['nextRetryAt'];
+              if (ts == null) return true;
+              try {
+                final dt = DateTime.parse(ts.toString());
+                return dt.isBefore(now) || dt.isAtSameMomentAs(now);
+              } catch (_) {
+                return true;
+              }
+            }
+            return false;
+          })
+          .map((value) => Map<String, dynamic>.from(value as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> markSubmitActionSyncing(String id) async {
+    if (!OfflineDBService.isInitialized) return;
+    final box = OfflineDBService.syncQueueBox;
+    final item = box.get(id);
+    if (item == null) return;
+    final map = Map<String, dynamic>.from(item as Map);
+    map['syncStatus'] = 2;
+    await box.put(id, map);
+  }
+
+  static Future<void> markSubmitActionSynced(String id) async {
+    if (!OfflineDBService.isInitialized) return;
+    final box = OfflineDBService.syncQueueBox;
+    await box.delete(id);
+  }
+
+  static Future<void> markSubmitActionFailed(String id) async {
+    if (!OfflineDBService.isInitialized) return;
+    final box = OfflineDBService.syncQueueBox;
+    final item = box.get(id);
+    if (item == null) return;
+    final map = Map<String, dynamic>.from(item as Map);
+    map['syncStatus'] = 3;
+    final int attempts = ((map['retryCount'] as int?) ?? 0) + 1;
+    final seconds = (30 * (1 << (attempts - 1).clamp(0, 7))).clamp(30, 3600);
+    map['retryCount'] = attempts;
+    map['nextRetryAt'] =
+        DateTime.now().add(Duration(seconds: seconds)).toIso8601String();
+    await box.put(id, map);
   }
 
   /// Get statistics
@@ -412,6 +644,8 @@ class OfflineStorageService {
         'total_attendance': 0,
         'unsynced_photos': 0,
         'total_photos': 0,
+        'unsynced_submit_actions': 0,
+        'total_submit_actions': 0,
       };
     }
     try {
@@ -422,6 +656,8 @@ class OfflineStorageService {
         'total_attendance': OfflineDBService.attendanceBox.length,
         'unsynced_photos': getUnsyncedPhotos().length,
         'total_photos': OfflineDBService.photosCacheBox.length,
+        'unsynced_submit_actions': getUnsyncedSubmitActions().length,
+        'total_submit_actions': OfflineDBService.syncQueueBox.length,
       };
     } catch (e) {
       return {
@@ -431,6 +667,8 @@ class OfflineStorageService {
         'total_attendance': 0,
         'unsynced_photos': 0,
         'total_photos': 0,
+        'unsynced_submit_actions': 0,
+        'total_submit_actions': 0,
       };
     }
   }
