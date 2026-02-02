@@ -1,341 +1,289 @@
-# Auditra - Full Stack Flutter & Django Application
+# Auditra - Auditing & Valuation ERP
 
-A complete authentication system with Flutter mobile app and Django backend using PostgreSQL.
+A full-stack application for property valuation and project management built with a Django REST API backend, React web dashboard, and Flutter mobile app.
 
-## 🚀 Features
-
-- ✅ User Registration
-- ✅ User Login with JWT Authentication
-- ✅ User Profile Management
-- ✅ Beautiful Material Design UI
-- ✅ Persistent Session Management
-- ✅ PostgreSQL Database
-- ✅ RESTful API with Django REST Framework
-
-## 📁 Project Structure
+## Architecture
 
 ```
 Auditra/
-├── auditra/              # Flutter mobile app
-│   ├── lib/
-│   │   ├── main.dart
-│   │   ├── screens/
-│   │   │   ├── login_screen.dart
-│   │   │   ├── register_screen.dart
-│   │   │   └── home_screen.dart
-│   │   └── services/
-│   │       └── api_service.dart
-│   └── pubspec.yaml
-│
-├── backend/              # Django backend
-│   ├── auditra_backend/
-│   │   ├── settings.py
-│   │   └── urls.py
-│   ├── authentication/
-│   │   ├── views.py
-│   │   ├── serializers.py
-│   │   └── urls.py
-│   ├── manage.py
-│   └── requirements.txt
-│
-└── README.md
+├── backend/              # Django REST API (Python)
+├── auditra web app/      # React web dashboard (Vite + MUI)
+├── auditra/              # Flutter mobile app (Dart)
 ```
 
-## 🛠️ Tech Stack
+### Tech Stack
 
-### Frontend
-- **Flutter** - Cross-platform mobile framework
-- **Dart** - Programming language
-- **Material Design 3** - UI/UX
+| Layer      | Technology                                      |
+|------------|------------------------------------------------|
+| Backend    | Django 5.0, Django REST Framework, PostgreSQL  |
+| Auth       | JWT (SimpleJWT), role-based access control     |
+| Web App    | React 18, Vite, Material-UI 6, Recharts       |
+| Mobile App | Flutter 3.10+, Provider, HTTP                  |
+| Email      | SendGrid                                       |
 
-### Backend
-- **Django 5.0** - Python web framework
-- **Django REST Framework** - API framework
-- **PostgreSQL** - Database
-- **JWT** - Authentication
-- **CORS Headers** - Cross-origin support
+## User Roles
 
-## 📋 Prerequisites
+| Role              | Web App                 | Mobile App              |
+|-------------------|-------------------------|-------------------------|
+| Admin             | Full dashboard          | -                       |
+| Coordinator       | Project management      | -                       |
+| HR Head           | Leave & attendance mgmt | -                       |
+| Accessor          | Project review          | -                       |
+| Senior Valuer     | Valuation review        | -                       |
+| MD/GM             | Project approval        | -                       |
+| General Employee  | Attendance, leave, pay  | -                       |
+| Client            | View assigned projects  | -                       |
+| Agent             | View assigned projects  | -                       |
+| Field Officer     | Attendance, leave, pay  | Projects & valuations   |
 
-Before you begin, ensure you have the following installed:
+Field Officers use the **mobile app** for project work (site visits, valuations, photos, GPS) and the **web app** for employee functions (attendance, leave, payments).
 
-- Flutter SDK (latest stable version)
-- Python 3.9+
-- PostgreSQL 13+
-- Android Studio / Xcode (for mobile development)
-- Git
+All other roles use the **web app** exclusively.
 
-## 🔧 Installation & Setup
+## Getting Started
 
-### 1. Clone the Repository
+### Prerequisites
 
-```bash
-cd Auditra
-```
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL 14+
+- Flutter SDK 3.10+ (for mobile development)
 
-### 2. Backend Setup (Django)
+### 1. Database Setup
 
-#### Step 1: Install PostgreSQL
+Create a PostgreSQL database:
 
-**Windows:**
-- Download from https://www.postgresql.org/download/windows/
-- Install and remember your password
-
-**Mac:**
-```bash
-brew install postgresql
-brew services start postgresql
-```
-
-**Linux:**
-```bash
-sudo apt-get update
-sudo apt-get install postgresql postgresql-contrib
-```
-
-#### Step 2: Create Database
-
-```bash
-# Connect to PostgreSQL
-psql -U postgres
-
-# In PostgreSQL shell:
+```sql
 CREATE DATABASE auditra_db;
-\q
 ```
 
-#### Step 3: Install Python Dependencies
+### 2. Backend Setup
 
 ```bash
 cd backend
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS/Linux
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Configure environment
+# Create a .env file in backend/ with your DB credentials (see Environment Variables below)
+
+# Run migrations
+python manage.py migrate
+
+
+# Create admin user
+python manage.py createsuperuser
+# Start server
+python manage.py runserver
 ```
 
-#### Step 4: Configure Environment
+The API will be available at `http://localhost:8000/api/`.
+
+### 3. Web App Setup
+
+```bash
+cd "auditra web app"
+
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev
+```
+
+The web app will be available at `http://localhost:5173/`.
+
+### 4. Mobile App Setup
+
+```bash
+cd auditra
+
+# Get dependencies
+flutter pub get
+
+# Run on device/emulator
+flutter run
+```
+
+## Environment Variables
 
 Create a `.env` file in the `backend/` directory:
 
 ```env
+# Database
 DB_NAME=auditra_db
 DB_USER=postgres
-DB_PASSWORD=your_postgres_password
+DB_PASSWORD=your_password
 DB_HOST=localhost
 DB_PORT=5432
+
+# Django
+SECRET_KEY=your-secret-key
+DEBUG=True
+
+# Email (SendGrid)
+SENDGRID_API_KEY=your-sendgrid-api-key
+DEFAULT_FROM_EMAIL=your-email@example.com
 ```
 
-#### Step 5: Run Migrations
+## API Endpoints
 
-```bash
-python manage.py makemigrations
-python manage.py migrate
+### Authentication (`/api/auth/`)
+
+| Method | Endpoint                        | Description              |
+|--------|---------------------------------|--------------------------|
+| POST   | `/login/`                       | Login (returns JWT)      |
+| POST   | `/register/`                    | Register new user        |
+| POST   | `/refresh/`                     | Refresh access token     |
+| GET    | `/profile/`                     | Get current user profile |
+| GET    | `/my-role/`                     | Get current user role    |
+| GET    | `/users/`                       | List all users (admin)   |
+| POST   | `/assign-role/`                 | Assign role to user      |
+| POST   | `/leave-requests/create/`       | Submit leave request     |
+| GET    | `/leave-requests/my/`           | My leave requests        |
+| GET    | `/leave-requests/`              | All leave requests (admin/HR) |
+| PATCH  | `/leave-requests/<pk>/update/`  | Approve/reject leave     |
+| GET    | `/leave-requests/statistics/`   | Leave statistics         |
+| POST   | `/payment-slips/generate/`      | Generate payment slips   |
+| GET    | `/payment-slips/`               | All payment slips        |
+| GET    | `/payment-slips/my/`            | My payment slips         |
+| POST   | `/removal-requests/create/`     | Submit removal request   |
+| GET    | `/removal-requests/`            | List removal requests    |
+
+### Attendance (`/api/attendance/`)
+
+| Method | Endpoint            | Description              |
+|--------|---------------------|--------------------------|
+| POST   | `/mark/`            | Check in                 |
+| POST   | `/checkout/`        | Check out                |
+| GET    | `/today/`           | Today's attendance       |
+| GET    | `/summary/`         | Attendance summary       |
+| GET    | `/summary/weekly/`  | Weekly summary (admin)   |
+
+### Projects (`/api/projects/`)
+
+| Method | Endpoint                              | Description                |
+|--------|---------------------------------------|----------------------------|
+| GET    | `/`                                   | List projects              |
+| POST   | `/`                                   | Create project             |
+| GET    | `/<pk>/`                              | Project detail             |
+| PUT    | `/<pk>/`                              | Update project             |
+| DELETE | `/<pk>/`                              | Delete project             |
+| POST   | `/<id>/assign-field-officer/`         | Assign field officer       |
+| POST   | `/<id>/assign-client/`                | Assign client              |
+| POST   | `/<id>/assign-agent/`                 | Assign agent               |
+| POST   | `/<id>/assign-accessor/`              | Assign accessor            |
+| POST   | `/<id>/assign-senior-valuer/`         | Assign senior valuer       |
+| GET    | `/available-field-officers/`          | List available FOs         |
+| GET    | `/available-clients/`                 | List available clients     |
+| GET    | `/available-agents/`                  | List available agents      |
+| GET    | `/available-accessors/`               | List available accessors   |
+| GET    | `/available-senior-valuers/`          | List available SVs         |
+| POST   | `/<pk>/md-gm-approve/`               | MD/GM approve project      |
+| POST   | `/<pk>/md-gm-reject/`                | MD/GM reject project       |
+| POST   | `/documents/`                         | Upload document            |
+
+### Valuations (`/api/valuations/`)
+
+| Method | Endpoint               | Description              |
+|--------|------------------------|--------------------------|
+| GET    | `/`                    | List valuations          |
+| POST   | `/`                    | Create valuation         |
+| GET    | `/<pk>/`               | Valuation detail         |
+| POST   | `/<pk>/submit/`        | Submit for review        |
+| POST   | `/<pk>/review/`        | Review valuation (SV)    |
+| POST   | `/<pk>/photos/`        | Upload photos            |
+
+## Project Structure
+
+### Backend (`backend/`)
+
+```
+backend/
+├── auditra_backend/        # Django project settings
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── authentication/         # Users, roles, leave, payments, removals
+├── attendance/             # Check-in/out, summaries, overtime
+├── projects/               # Projects, assignments, documents
+├── valuations/             # Valuations, photos, GPS data
+├── requirements.txt
+└── manage.py
 ```
 
-#### Step 6: Create Superuser (Optional)
+### Web App (`auditra web app/`)
 
-```bash
-python manage.py createsuperuser
+```
+auditra web app/
+├── src/
+│   ├── api/                # Axios client with JWT interceptor
+│   ├── components/         # Layout, Sidebar, shared UI components
+│   ├── contexts/           # AuthContext (login state, role)
+│   ├── pages/
+│   │   ├── admin/          # User mgmt, attendance, leave, payments
+│   │   ├── coordinator/    # Project CRUD, assignments
+│   │   ├── hr/             # Leave requests, attendance, removals
+│   │   ├── accessor/       # Assigned projects
+│   │   ├── senior-valuer/  # Valuation review
+│   │   ├── md-gm/          # Project approval
+│   │   ├── field-officer/  # Attendance/leave/pay dashboard
+│   │   ├── shared/         # Common pages (attendance, leave, pay, profile)
+│   │   ├── auth/           # Login, Register
+│   │   └── public/         # Landing page, public forms
+│   ├── services/           # API service modules
+│   ├── utils/              # Role config, helpers
+│   └── App.jsx             # Router with role-based routing
+├── package.json
+└── vite.config.js
 ```
 
-#### Step 7: Start Django Server
+### Mobile App (`auditra/`)
 
+```
+auditra/
+├── lib/
+│   ├── main.dart
+│   ├── screens/
+│   │   ├── home_screen.dart           # Role routing (FO only)
+│   │   ├── login_screen.dart
+│   │   ├── register_screen.dart
+│   │   ├── field_officer_dashboard.dart
+│   │   ├── field_officer/             # FO-specific screens
+│   │   ├── valuation_form_screen.dart
+│   │   ├── project_details_screen.dart
+│   │   ├── payment_slips_screen.dart
+│   │   ├── leave_request_screen.dart
+│   │   ├── my_leave_requests_screen.dart
+│   │   ├── personal_info_screen.dart
+│   │   └── change_password_screen.dart
+│   ├── models/             # Data models
+│   ├── services/           # API & offline services
+│   ├── theme/              # App theme & colors
+│   └── widgets/            # Reusable widgets
+└── pubspec.yaml
+```
+
+## Running Both Servers
+
+For development, run the backend and web app simultaneously in separate terminals:
+
+**Terminal 1 - Backend:**
 ```bash
+cd backend
 python manage.py runserver
 ```
 
-Backend will be available at: `http://localhost:8000/`
-
-### 3. Frontend Setup (Flutter)
-
-#### Step 1: Install Dependencies
-
+**Terminal 2 - Web App:**
 ```bash
-cd ../auditra
-flutter pub get
+cd "auditra web app"
+npm run dev
 ```
 
-#### Step 2: Configure API URL
-
-Edit `lib/services/api_service.dart` and update the `baseUrl`:
-
-```dart
-// For Android Emulator
-static const String baseUrl = 'http://10.0.2.2:8000/api';
-
-// For iOS Simulator
-static const String baseUrl = 'http://localhost:8000/api';
-
-// For Physical Device (replace with your computer's IP)
-static const String baseUrl = 'http://192.168.1.XXX:8000/api';
-```
-
-#### Step 3: Run the App
-
-```bash
-flutter run
-```
-
-## 🌐 API Endpoints
-
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------|
-| POST | `/api/auth/register/` | Register new user | No |
-| POST | `/api/auth/login/` | Login user | No |
-| GET | `/api/auth/profile/` | Get user profile | Yes |
-
-### Example API Requests
-
-**Register:**
-```bash
-curl -X POST http://localhost:8000/api/auth/register/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username":"testuser",
-    "email":"test@example.com",
-    "password":"securepass123",
-    "password2":"securepass123"
-  }'
-```
-
-**Login:**
-```bash
-curl -X POST http://localhost:8000/api/auth/login/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username":"testuser",
-    "password":"securepass123"
-  }'
-```
-
-**Get Profile:**
-```bash
-curl -X GET http://localhost:8000/api/auth/profile/ \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
-
-## 📱 App Screenshots
-
-### Features:
-1. **Splash Screen** - Animated loading screen with branding
-2. **Login Screen** - Clean authentication UI with validation
-3. **Registration Screen** - Comprehensive signup form
-4. **Home Screen** - Dashboard with user info and quick actions
-
-## 🔐 Authentication Flow
-
-1. User registers with username, email, and password
-2. Backend validates and creates user account
-3. JWT access & refresh tokens are generated
-4. Tokens stored securely in device (SharedPreferences)
-5. All API requests include Bearer token in headers
-6. User stays logged in until explicit logout
-
-## 🐛 Troubleshooting
-
-### Connection Refused Error
-
-**Problem:** Flutter app can't connect to Django backend
-
-**Solutions:**
-1. Verify Django is running: `python manage.py runserver`
-2. Check firewall settings allow port 8000
-3. For physical device, use your computer's IP address
-4. Ensure both devices are on same network
-
-### PostgreSQL Connection Error
-
-**Problem:** Django can't connect to PostgreSQL
-
-**Solutions:**
-1. Verify PostgreSQL is running: `pg_isready`
-2. Check credentials in `.env` file
-3. Ensure database `auditra_db` exists
-4. Update `pg_hba.conf` for authentication method
-
-### Flutter Build Errors
-
-**Problem:** App won't build or dependencies fail
-
-**Solutions:**
-```bash
-flutter clean
-flutter pub get
-flutter pub upgrade
-```
-
-### Symlink Error on Windows
-
-Enable Developer Mode:
-```
-start ms-settings:developers
-```
-
-## 🚀 Deployment Tips
-
-### Backend (Django)
-
-1. Set `DEBUG = False` in production
-2. Use proper `SECRET_KEY`
-3. Configure `ALLOWED_HOSTS`
-4. Use environment variables for sensitive data
-5. Set up HTTPS
-6. Use production WSGI server (Gunicorn, uWSGI)
-
-### Frontend (Flutter)
-
-1. Update API URLs to production
-2. Enable code obfuscation
-3. Build release APK/IPA:
-```bash
-flutter build apk --release
-flutter build ios --release
-```
-
-## 📚 Dependencies
-
-### Flutter (pubspec.yaml)
-```yaml
-dependencies:
-  http: ^1.1.0
-  shared_preferences: ^2.2.2
-  provider: ^6.1.1
-  cupertino_icons: ^1.0.8
-```
-
-### Django (requirements.txt)
-```
-Django==5.0.0
-djangorestframework==3.14.0
-psycopg==3.1.18
-django-cors-headers==4.3.1
-python-decouple==3.8
-djangorestframework-simplejwt==5.3.1
-```
-
-## 🎯 Future Enhancements
-
-- [ ] Email verification
-- [ ] Password reset functionality
-- [ ] Social authentication (Google, Facebook)
-- [ ] Profile picture upload
-- [ ] Two-factor authentication
-- [ ] Push notifications
-- [ ] Dark mode theme
-- [ ] Multi-language support
-
-## 📄 License
-
-This project is created for educational purposes.
-
-## 👥 Contributing
-
-Contributions are welcome! Feel free to submit issues and pull requests.
-
-## 📧 Support
-
-For support, please open an issue in the repository.
-
----
-
-**Built with ❤️ using Flutter & Django**
-
-# Auditra
+Then open `http://localhost:5173/` in your browser.
