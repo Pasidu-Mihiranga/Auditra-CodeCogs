@@ -75,7 +75,24 @@ class UserSerializer(serializers.ModelSerializer):
             pass
         return 0
 
-
+class Meta:
+        model = User
+        fields = ('username', 'email', 'password', 'password2', 'first_name', 'last_name')
+        extra_kwargs = {
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+            'email': {'required': True}
+        }
+    
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        return attrs
+    
+    def create(self, validated_data):
+        validated_data.pop('password2')
+        user = User.objects.create_user(**validated_data)
+        return user
 class UserDetailSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     role_display = serializers.SerializerMethodField()
@@ -94,7 +111,24 @@ class UserDetailSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return 'unassigned'
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'password', 'password2', 'first_name', 'last_name')
+        extra_kwargs = {
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+            'email': {'required': True}
+        }
     
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        return attrs
+    
+    def create(self, validated_data):
+        validated_data.pop('password2')
+        user = User.objects.create_user(**validated_data)
+        return user
     def get_role_display(self, obj):
         """Get role display from user's role"""
         try:

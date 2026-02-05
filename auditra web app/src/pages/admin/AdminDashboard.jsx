@@ -105,6 +105,8 @@ export default function AdminDashboard() {
             <Typography variant="h6" sx={{ fontWeight: 600 }}>Visual Analytics</Typography>
           </Box>
 
+          
+
           <Grid container spacing={3}>
             {/* Project Status Distribution - Donut */}
             <Grid item xs={12} md={4}>
