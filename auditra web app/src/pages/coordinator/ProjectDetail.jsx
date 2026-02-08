@@ -179,7 +179,23 @@ export default function ProjectDetail() {
       setStarting(false);
     }
   };
+  // Payment management states
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [rejectPaymentDialog, setRejectPaymentDialog] = useState(false);
+  const [paymentRejectReason, setPaymentRejectReason] = useState('');
   
+  // Cancellation request states
+  const [cancelDialog, setCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancellationStatus, setCancellationStatus] = useState(null);
+
+  // Agent payment states
+  const [agentPaymentDialog, setAgentPaymentDialog] = useState(false);
+  const [agentPaymentAmount, setAgentPaymentAmount] = useState('');
+  const [agentPaymentNotes, setAgentPaymentNotes] = useState('');
+  const [agentPaymentLoading, setAgentPaymentLoading] = useState(false);
+
   // Payment management handlers
   const handleSendPaymentRequest = async () => {
     setPaymentLoading(true);
