@@ -27,7 +27,7 @@ Auditra/
 |-------------------|-------------------------|-------------------------|
 | Admin             | Full dashboard          | -                       |
 | Coordinator       | Project management      | -                       |
-| HR Staff          | Leave & attendance mgmt | -                       |
+| HR Head           | Leave & attendance mgmt | -                       |
 | Accessor          | Project review          | -                       |
 | Senior Valuer     | Valuation review        | -                       |
 | MD/GM             | Project approval        | -                       |
@@ -76,9 +76,9 @@ pip install -r requirements.txt
 # Run migrations
 python manage.py migrate
 
+
 # Create admin user
 python manage.py createsuperuser
-
 # Start server
 python manage.py runserver
 ```
@@ -287,4 +287,3 @@ npm run dev
 ```
 
 Then open `http://localhost:5173/` in your browser.
-# Auditra-CodeCogs

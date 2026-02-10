@@ -1,0 +1,114 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+*.mode1v3
+*.mode2v3
+*.moved-aside
+*.pbxuser
+*.perspectivev3
+**/.idea/
+*.hprof
+
+# Flutter/Dart specific
+coverage/
+lib/generated_plugin_registrant.dart
+pubspec.lock
+
+# Android/IntelliJ
+.idea/
+.gradle
+local.properties
+*.iml
+*.hprof
+
+# iOS/Xcode
+**/Pods/
+**/.symlinks/
+**/Flutter/Flutter.framework
+**/Flutter/Flutter.podspec
+**/Flutter/Generated.xcconfig
+**/Flutter/ephemeral/
+**/Flutter/flutter_export_environment.sh
+**/Podfile.lock
+**/.vagrant/
+**/.sconsign.dblite
+**/.tags*
+
+# Python/Django
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Environment Variables
+.env
+*.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.sqlite3
+*.db
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Node modules
+node_modules/
+
+# Vite cache
+.vite/
+
+# Claude temp files
+tmpclaude-* 
+*.bak
+*_new_views.py
+_fix.py
+update_urls.py
+update_views.py
+readmetheme.md
+convert-to-webp.js
