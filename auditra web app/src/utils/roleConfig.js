@@ -16,14 +16,9 @@ import BlockIcon from '@mui/icons-material/Block';
 
 export const roleMenuConfig = {
   admin: [
-    { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-    { label: 'System Logs', path: '/dashboard/system-logs', icon: ReceiptLongIcon },
     { label: 'Client Submissions', path: '/dashboard/client-submissions', icon: AssignmentIcon },
     { label: 'Employee Applications', path: '/dashboard/employee-submissions', icon: PersonAddIcon },
-    { label: 'Cancellation Requests', path: '/dashboard/cancellation-requests', icon: BlockIcon },
     { label: 'User Management', path: '/dashboard/users', icon: PeopleIcon },
-    { label: 'Projects', path: '/dashboard/projects', icon: FolderIcon },
-    { label: 'Removal Requests', path: '/dashboard/removal-requests', icon: PersonRemoveIcon },
   ],
   hr_head: [
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },

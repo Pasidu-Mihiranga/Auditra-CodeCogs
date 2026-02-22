@@ -11,7 +11,6 @@ import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 
 // Admin pages
-import AdminDashboard from './pages/admin/AdminDashboard';
 import UserManagement from './pages/admin/UserManagement';
 import AttendanceSummary from './pages/admin/AttendanceSummary';
 import LeaveManagement from './pages/admin/LeaveManagement';
@@ -78,7 +77,7 @@ function RoleDashboard() {
 
   switch (role) {
     case 'admin':
-      return <AdminDashboard />;
+      return <Navigate to="/dashboard/client-submissions" replace />;
     case 'coordinator':
       return <CoordinatorDashboard />;
     case 'field_officer':

@@ -58,9 +58,14 @@ export default function EmployeeFormPage() {
 
   const validatePhone = (phone) => {
     if (!phone) return '';
-    if (!/^\d+$/.test(phone)) return 'Phone number must contain only digits';
-    if (phone.length !== 10) return 'Phone number must be exactly 10 digits';
-    if (!phone.startsWith('0')) return 'Phone number must start with 0';
+    if (/^0\d{9}$/.test(phone)) return '';
+    if (/^\+94\d{9}$/.test(phone)) return '';
+    return 'Phone must be 10 digits starting with 0 or +94 followed by 9 digits';
+  };
+
+  const validateEmail = (email) => {
+    if (!email) return '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Please enter a valid email address';
     return '';
   };
 
@@ -79,14 +84,17 @@ export default function EmployeeFormPage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'email' && emailError) setEmailError('');
+    const val = (name === 'email') ? value.toLowerCase() : value;
+    if (name === 'email') {
+      setEmailError(validateEmail(val));
+    }
     if (name === 'phone') {
-      setPhoneError(validatePhone(value));
+      setPhoneError(validatePhone(val));
     }
     if (name === 'nic') {
-      setNicError(validateNIC(value));
+      setNicError(validateNIC(val));
     }
-    setForm({ ...form, [name]: value });
+    setForm({ ...form, [name]: val });
   };
 
   const handleFileChange = (e) => {
@@ -109,6 +117,13 @@ export default function EmployeeFormPage() {
     setEmailError('');
     setPhoneError('');
     setNicError('');
+
+    // Validate email
+    const emailValidationError = validateEmail(form.email);
+    if (form.email && emailValidationError) {
+      setEmailError(emailValidationError);
+      return;
+    }
 
     // Validate phone
     const phoneValidationError = validatePhone(form.phone);

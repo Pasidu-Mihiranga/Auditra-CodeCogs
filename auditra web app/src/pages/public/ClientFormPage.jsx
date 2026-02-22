@@ -100,6 +100,8 @@ export default function ClientFormPage() {
     agent_name: '', agent_phone: '', agent_email: '',
   });
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [agentEmailError, setAgentEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [agentPhoneError, setAgentPhoneError] = useState('');
   const [nicError, setNicError] = useState('');
@@ -112,9 +114,14 @@ export default function ClientFormPage() {
 
   const validatePhone = (phone) => {
     if (!phone) return '';
-    if (!/^\d+$/.test(phone)) return 'Phone number must contain only digits';
-    if (phone.length !== 10) return 'Phone number must be exactly 10 digits';
-    if (!phone.startsWith('0')) return 'Phone number must start with 0';
+    if (/^0\d{9}$/.test(phone)) return '';
+    if (/^\+94\d{9}$/.test(phone)) return '';
+    return 'Phone must be 10 digits starting with 0 or +94 followed by 9 digits';
+  };
+
+  const validateEmail = (email) => {
+    if (!email) return '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Please enter a valid email address';
     return '';
   };
 
@@ -133,19 +140,38 @@ export default function ClientFormPage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'phone') {
-      setPhoneError(validatePhone(value));
+    const val = (name === 'email' || name === 'agent_email') ? value.toLowerCase() : value;
+    if (name === 'email') {
+      setEmailError(validateEmail(val));
+    } else if (name === 'agent_email') {
+      setAgentEmailError(validateEmail(val));
+    } else if (name === 'phone') {
+      setPhoneError(validatePhone(val));
     } else if (name === 'agent_phone') {
-      setAgentPhoneError(validatePhone(value));
+      setAgentPhoneError(validatePhone(val));
     } else if (name === 'nic') {
-      setNicError(validateNIC(value));
+      setNicError(validateNIC(val));
     }
-    setForm({ ...form, [name]: value });
+    setForm({ ...form, [name]: val });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validate email fields
+    const emailValidationError = validateEmail(form.email);
+    if (form.email && emailValidationError) {
+      setEmailError(emailValidationError);
+      return;
+    }
+    if (regType === 'agent') {
+      const agentEmailValidationError = validateEmail(form.agent_email);
+      if (form.agent_email && agentEmailValidationError) {
+        setAgentEmailError(agentEmailValidationError);
+        return;
+      }
+    }
 
     // Validate phone fields
     const phoneValidationError = validatePhone(form.phone);
@@ -380,7 +406,7 @@ export default function ClientFormPage() {
                   <Grid item xs={12}><TextField fullWidth label="Address" name="address" value={form.address} onChange={handleChange} sx={inputSx} /></Grid>
                   <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" name="phone" value={form.phone} onChange={handleChange} error={!!phoneError} helperText={phoneError} sx={inputSx} /></Grid>
                   <Grid item xs={12} sm={6}><TextField fullWidth label="NIC" name="nic" value={form.nic} onChange={handleChange} error={!!nicError} helperText={nicError} sx={inputSx} /></Grid>
-                  <Grid item xs={12}><TextField fullWidth label="Email" name="email" type="email" value={form.email} onChange={handleChange} required sx={inputSx} /></Grid>
+                  <Grid item xs={12}><TextField fullWidth label="Email" name="email" type="email" value={form.email} onChange={handleChange} error={!!emailError} helperText={emailError} required sx={inputSx} /></Grid>
                   <Grid item xs={12}><TextField fullWidth label="Company Name" name="company_name" value={form.company_name} onChange={handleChange} sx={inputSx} /></Grid>
                 </Grid>
               </Box>
@@ -405,7 +431,7 @@ export default function ClientFormPage() {
                     <Grid container spacing={2.5}>
                       <Grid item xs={12}><TextField fullWidth label="Agent Name" name="agent_name" value={form.agent_name} onChange={handleChange} required sx={inputSx} /></Grid>
                       <Grid item xs={12} sm={6}><TextField fullWidth label="Agent Phone" name="agent_phone" value={form.agent_phone} onChange={handleChange} error={!!agentPhoneError} helperText={agentPhoneError} required sx={inputSx} /></Grid>
-                      <Grid item xs={12} sm={6}><TextField fullWidth label="Agent Email" name="agent_email" type="email" value={form.agent_email} onChange={handleChange} required sx={inputSx} /></Grid>
+                      <Grid item xs={12} sm={6}><TextField fullWidth label="Agent Email" name="agent_email" type="email" value={form.agent_email} onChange={handleChange} error={!!agentEmailError} helperText={agentEmailError} required sx={inputSx} /></Grid>
                     </Grid>
                   </Box>
                 </>
