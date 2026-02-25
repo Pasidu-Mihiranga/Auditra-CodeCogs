@@ -12,10 +12,15 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
-from decouple import config
+from decouple import Config, RepositoryEnv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+# Load environment variables from the backend .env file explicitly so the
+# payment gateway settings are available regardless of the working directory.
+config = Config(RepositoryEnv(str(BASE_DIR / '.env')))
 
 
 # Quick-start development settings - unsuitable for production
@@ -35,6 +40,7 @@ ALLOWED_HOSTS = ALLOWED_HOSTS_ENV.split(',') if ALLOWED_HOSTS_ENV else ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -44,11 +50,20 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'channels',
+    'django_celery_beat',
+    # Project apps
     'authentication',
     'attendance',
     'projects',
     'valuations',
     'system_logs',
+    # New apps
+    'notifications',
+    'standups',
+    'catalog',
+    'reports',
+    'reports_v2',
 ]
 
 MIDDLEWARE = [
@@ -82,6 +97,49 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'auditra_backend.wsgi.application'
+ASGI_APPLICATION = 'auditra_backend.asgi.application'
+
+# Django Channels channel layer
+# Uses InMemoryChannelLayer for local development (avoids needing Redis 5+).
+# Switch to RedisChannelLayer for production (requires Redis >= 5.0).
+_USE_REDIS_CHANNEL_LAYER = config('USE_REDIS_CHANNEL_LAYER', default='False') == 'True'
+if _USE_REDIS_CHANNEL_LAYER:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [config('REDIS_URL', default='redis://localhost:6379')],
+            },
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+
+# Celery settings
+CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379')
+CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379')
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Periodic tasks (Feature #2 — visit reminders runs daily at 08:00 local time).
+from celery.schedules import crontab  # noqa: E402
+CELERY_BEAT_SCHEDULE = {
+    'send-visit-reminders-daily': {
+        'task': 'projects.send_visit_reminders',
+        'schedule': crontab(hour=8, minute=0),
+    },
+    'compute-leave-deductions-monthly': {
+        'task': 'authentication.compute_leave_deductions',
+        'schedule': crontab(hour=1, minute=0, day_of_month=28),
+    },
+}
+
+# FCM settings
+FCM_CREDENTIALS_PATH = config('FCM_CREDENTIALS_PATH', default='')
 
 
 # Database
@@ -98,6 +156,10 @@ DATABASES = {
     }
 }
 
+
+AUTHENTICATION_BACKENDS = [
+    'authentication.backends.EmailOrUsernameBackend',
+]
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -200,3 +262,16 @@ EMAIL_TIMEOUT = 30  # seconds
 
 # Frontend URL (used for login links in emails)
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
+
+# PayHere payment gateway settings
+PAYHERE_MERCHANT_ID = config('PAYHERE_MERCHANT_ID', default='1235300')
+PAYHERE_MERCHANT_SECRET = config(
+    'PAYHERE_MERCHANT_SECRET',
+    default='NDE1NDQ4ODY5NzE4NDEzMzA1MzQyMjc0NzIzNjIwMTIzMDM3NDg0Mw=='
+)
+PAYHERE_CURRENCY = config('PAYHERE_CURRENCY', default='LKR')
+PAYHERE_CHECKOUT_URL = config('PAYHERE_CHECKOUT_URL', default='https://sandbox.payhere.lk/pay/checkout')
+PAYHERE_RETURN_URL = config('PAYHERE_RETURN_URL', default=f'{FRONTEND_URL}/dashboard/client-payments')
+PAYHERE_CANCEL_URL = config('PAYHERE_CANCEL_URL', default=f'{FRONTEND_URL}/dashboard/client-payments')
+PAYHERE_NOTIFY_URL = config('PAYHERE_NOTIFY_URL', default='http://localhost:8000/api/projects/payhere/notify/')
+PAYHERE_DUMMY_MODE = config('PAYHERE_DUMMY_MODE', default=True, cast=bool)

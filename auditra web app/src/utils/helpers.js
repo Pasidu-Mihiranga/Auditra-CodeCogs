@@ -7,7 +7,7 @@ export const getStatusColor = (status) => {
     completed: '#1565C0',
     cancelled: '#0D47A1',
     approved: '#1565C0',
-    rejected: '#0D47A1',
+    rejected: '#D32F2F',
     submitted: '#1565C0',
     reviewed: '#0D47A1',
     accepted: '#1565C0',
@@ -22,16 +22,27 @@ export const getStatusColor = (status) => {
 
 export const getPriorityColor = (priority) => {
   const colors = {
-    high: '#0D47A1',
-    medium: '#1E88E5',
-    low: '#1565C0',
+    urgent: '#6A1B9A',  // deep purple
+    high: '#d32f2f',    // red
+    medium: '#ed6c02',  // orange
+    low: '#2e7d32',     // green
   };
   return colors[priority] || '#64748B';
 };
 
+export const getPriorityBgColor = (priority) => {
+  const colors = {
+    urgent: '#f3e5f5',
+    high: '#fdecea',
+    medium: '#fff3e0',
+    low: '#e8f5e9',
+  };
+  return colors[priority] || '#f5f5f5';
+};
+
 export const capitalize = (str) => {
   if (!str) return '';
-  return str.toUpperCase();
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 };
 
 export const formatDate = (dateString) => {
@@ -61,4 +72,33 @@ export const formatCurrency = (amount) => {
     currency: 'LKR',
     minimumFractionDigits: 0,
   }).format(amount);
+};
+
+export const formatFileSize = (bytes) => {
+  if (!bytes) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+export const extractApiErrorMessage = (err, fallback = 'Request failed') => {
+  const data = err?.response?.data;
+
+  if (data && typeof data === 'object') {
+    if (data.error) return data.error;
+    if (data.detail) return data.detail;
+    if (data.message) return data.message;
+
+    const msgs = Object.entries(data).map(([key, value]) => {
+      const fieldName = key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+      const message = Array.isArray(value) ? value.join(', ') : value;
+      return `${fieldName}: ${message}`;
+    });
+
+    if (msgs.length > 0) {
+      return msgs.join('\n');
+    }
+  }
+
+  return err?.message || fallback;
 };

@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'dart:io';
+import 'dart:math' as math;
 import '../services/api_service.dart';
+import '../services/network_service.dart';
+import '../services/offline_db_service.dart';
+import '../services/offline_storage_service.dart';
 import '../services/pdf_service.dart';
 import '../models/project_model.dart';
 import '../models/valuation_model.dart';
+import '../widgets/item_suggestions_widget.dart';
+import '../widgets/depreciation_widget.dart';
 
 class ValuationFormScreen extends StatefulWidget {
   final Project project;
@@ -37,6 +45,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   
   // Appreciation/Depreciation calculation fields
   String? _calculationType; // 'appreciation' or 'depreciation'
+  String? _calculationMethod; // selected method under type
   final _rateController = TextEditingController();
   final _yearsController = TextEditingController();
   final _newPriceController = TextEditingController();
@@ -71,8 +80,36 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   final _otherSpecificationsController = TextEditingController();
   
   List<File> _selectedPhotos = [];
+  // Feature #9: parallel metadata list — same index as _selectedPhotos
+  final List<Map<String, dynamic>> _photoMeta = [];
+  int _primaryPhotoIndex = 0;
   List<ValuationPhoto> _existingPhotos = [];
   int? _valuationId;
+
+  // Feature #10: item suggestion panel state
+  bool _showSuggestions = false;
+  String _lastSuggestionQuery = '';
+  // Feature #12: depreciation override state (set by DepreciationWidget)
+  Map<String, dynamic>? _depreciationResult;
+
+  static const Map<String, String> _calculationMethodLabels = {
+    'simple_interest': 'Simple Interest',
+    'compound_annual': 'Compound (Annual)',
+    'compound_monthly': 'Compound (Monthly)',
+    'straight_line': 'Straight Line',
+    'reducing_balance': 'Reducing Balance',
+    'double_declining': 'Double Declining',
+  };
+
+  List<String> get _availableMethods {
+    if (_calculationType == 'appreciation') {
+      return const ['simple_interest', 'compound_annual', 'compound_monthly'];
+    }
+    if (_calculationType == 'depreciation') {
+      return const ['straight_line', 'reducing_balance', 'double_declining'];
+    }
+    return const [];
+  }
 
   @override
   void initState() {
@@ -99,6 +136,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       String? notes = valuation.notes;
       String? baseValueStr;
       String? adjustmentType;
+      String? methodStr;
       String? rateStr;
       String? yearsStr;
       String? calculatedValueStr;
@@ -132,6 +170,20 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             }
           }
           
+          // Extract Rate
+          final methodRegex = RegExp(r'Method:\s*([A-Za-z _()-]+)', caseSensitive: false);
+          final methodMatch = methodRegex.firstMatch(calculationData);
+          if (methodMatch != null) {
+            final raw = (methodMatch.group(1) ?? '').trim().toLowerCase();
+            final slug = raw
+                .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+                .replaceAll(RegExp(r'_+'), '_')
+                .replaceAll(RegExp(r'^_|_$'), '');
+            if (slug.isNotEmpty) {
+              methodStr = slug;
+            }
+          }
+
           // Extract Rate
           final rateRegex = RegExp(r'Rate:\s*([\d,]+\.?\d*)\s*%', caseSensitive: false);
           final rateMatch = rateRegex.firstMatch(calculationData);
@@ -170,6 +222,12 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       // Populate calculation fields if available
       if (adjustmentType != null) {
         _calculationType = adjustmentType;
+        _calculationMethod = adjustmentType == 'appreciation'
+            ? 'compound_annual'
+            : 'reducing_balance';
+      }
+      if (methodStr != null && _availableMethods.contains(methodStr)) {
+        _calculationMethod = methodStr;
       }
       if (rateStr != null) {
         _rateController.text = rateStr;
@@ -259,44 +317,82 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     super.dispose();
   }
 
+  /// Feature #9: compress image and return the compressed file.
+  Future<File?> _compressImage(File original) async {
+    final targetPath = '${original.path}_compressed.jpg';
+    final result = await FlutterImageCompress.compressAndGetFile(
+      original.absolute.path,
+      targetPath,
+      quality: 75,
+      minWidth: 1280,
+      minHeight: 720,
+    );
+    return result != null ? File(result.path) : original;
+  }
+
+  /// Feature #9: get device identifier
+  Future<String> _getDeviceId() async {
+    try {
+      final info = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final android = await info.androidInfo;
+        return android.id;
+      } else if (Platform.isIOS) {
+        final ios = await info.iosInfo;
+        return ios.identifierForVendor ?? 'unknown';
+      }
+    } catch (_) {}
+    return 'unknown';
+  }
+
+  /// Feature #9: capture per-photo metadata (gps, timestamp, device_id).
+  Future<Map<String, dynamic>> _capturePhotoMeta() async {
+    final meta = <String, dynamic>{
+      'captured_at': DateTime.now().toIso8601String(),
+      'device_id': await _getDeviceId(),
+    };
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      ).timeout(const Duration(seconds: 8));
+      meta['gps_lat'] = pos.latitude;
+      meta['gps_lon'] = pos.longitude;
+    } catch (_) {}
+    return meta;
+  }
+
   Future<void> _pickImage() async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
+        final compressed = await _compressImage(File(image.path)) ?? File(image.path);
+        final meta = await _capturePhotoMeta();
         setState(() {
-          _selectedPhotos.add(File(image.path));
+          _selectedPhotos.add(compressed);
+          _photoMeta.add(meta);
         });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking image: $e')));
       }
     }
   }
 
   Future<void> _takePhoto() async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
-      
+      final XFile? image = await _picker.pickImage(source: ImageSource.camera);
       if (image != null) {
+        final compressed = await _compressImage(File(image.path)) ?? File(image.path);
+        final meta = await _capturePhotoMeta();
         setState(() {
-          _selectedPhotos.add(File(image.path));
+          _selectedPhotos.add(compressed);
+          _photoMeta.add(meta);
         });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error taking photo: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error taking photo: $e')));
       }
     }
   }
@@ -391,6 +487,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         return value.trim();
       }
 
+      // Feature #9: capture once at save-time to stamp photos uploaded below
+      final deviceId = await _getDeviceId();
+      final capturedAt = DateTime.now().toIso8601String();
       Map<String, dynamic> data = {
         'project': widget.project.id,
         'category': _category,
@@ -429,9 +528,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         
         // If calculation was performed, include all calculation details
         if (_showNewPriceField && _calculationType != null && _rateController.text.isNotEmpty && _yearsController.text.isNotEmpty && _newPriceController.text.isNotEmpty) {
+          final methodLabel = _calculationMethodLabels[_calculationMethod] ??
+              (_calculationType == 'appreciation'
+                  ? _calculationMethodLabels['compound_annual']!
+                  : _calculationMethodLabels['reducing_balance']!);
           calculationInfo = '\n\n[VALUATION_CALCULATION]\n'
               'Base Value: LKR $baseValueStr\n'
               'Adjustment Type: ${_calculationType == 'appreciation' ? 'Appreciation' : 'Depreciation'}\n'
+              'Method: $methodLabel\n'
               'Rate: ${_rateController.text}%\n'
               'Years: ${_yearsController.text}\n'
               'Calculated Value: LKR ${_newPriceController.text}\n'
@@ -456,7 +560,28 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         }
         notes = notes != null && notes.isNotEmpty ? '$notes$calculationInfo' : calculationInfo;
       }
-      
+
+      // Feature #12: append computed depreciation snapshot to notes for audit
+      if (_depreciationResult != null) {
+        final d = _depreciationResult!;
+        final depBlock = '\n\n[DEPRECIATION]\n'
+            'Method: ${d['method'] ?? ''}\n'
+            'Book Value: ${d['computed_book_value'] ?? ''}\n'
+            'Depreciation Amount: ${d['depreciation_amount'] ?? ''}\n'
+            'Applied Rate: ${d['applied_rate'] ?? ''}\n'
+            'Override Reason: ${d['override_reason'] ?? ''}\n'
+            '[/DEPRECIATION]';
+        if (notes != null) {
+          notes = notes.replaceAll(
+            RegExp(r'\[DEPRECIATION\].*?\[/DEPRECIATION\]', dotAll: true, caseSensitive: false),
+            '',
+          ).trim();
+          notes = '$notes$depBlock';
+        } else {
+          notes = depBlock;
+        }
+      }
+
       if (notes != null) data['notes'] = notes;
 
       // Add category-specific fields
@@ -538,7 +663,8 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
       if (result['success']) {
         final valuationData = result['data'];
-        final synced = result['synced'] ?? true; // Default to true if not specified
+        // Feature #4 fix: 'synced' key now explicitly returned by createValuation
+        final synced = result['synced'] ?? true;
         
         // Show offline indicator if saved offline
         if (!synced && mounted) {
@@ -641,13 +767,23 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         
         print('Using valuation ID: $newValuationId');
         
-        // Upload photos
-        for (var photo in _selectedPhotos) {
+        // Upload photos with metadata (Feature #9)
+        for (var i = 0; i < _selectedPhotos.length; i++) {
+          final photo = _selectedPhotos[i];
+          final meta = i < _photoMeta.length ? _photoMeta[i] : <String, dynamic>{};
           try {
-            await ApiService.uploadValuationPhoto(newValuationId, photo.path);
+            await ApiService.uploadValuationPhoto(
+              newValuationId,
+              photo.path,
+              isPrimary: i == _primaryPhotoIndex,
+              ordering: i,
+              capturedAt: (meta['captured_at'] as String?) ?? capturedAt,
+              gpsLat: meta['gps_lat'] is num ? (meta['gps_lat'] as num).toDouble() : null,
+              gpsLon: meta['gps_lon'] is num ? (meta['gps_lon'] as num).toDouble() : null,
+              deviceId: (meta['device_id'] as String?) ?? deviceId,
+            );
           } catch (e) {
             print('Error uploading photo: $e');
-            // Continue with other photos even if one fails
           }
         }
 
@@ -772,6 +908,33 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     setState(() => _isSubmitting = true);
 
     try {
+      // Offline fallback: queue submission and auto-sync when online again.
+      final offlineModeEnabled = await OfflineDBService.isOfflineModeEnabled();
+      if (offlineModeEnabled) {
+        if (!NetworkService.isInitialized) {
+          await NetworkService.init();
+        }
+        final isOnline = await NetworkService.checkConnectivity();
+        if (!isOnline) {
+          await OfflineStorageService.queueValuationSubmissionOffline(
+            valuationId: _valuationId!,
+            projectId: widget.project.id,
+            projectTitle: widget.project.title,
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No internet. Report submission queued and will auto-submit when online.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 4),
+              ),
+            );
+            Navigator.of(context).pop(true);
+          }
+          return;
+        }
+      }
+
       // Fetch the latest valuation data to generate the PDF
       final valResult = await ApiService.getValuation(_valuationId!);
       if (valResult['success'] && valResult['data'] != null) {
@@ -810,6 +973,35 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         }
       }
     } catch (e) {
+      final errorText = e.toString();
+      final isNetworkFailure =
+          e is SocketException ||
+          errorText.contains('ClientException') ||
+          errorText.contains('Connection failed') ||
+          errorText.contains('Connection refused') ||
+          errorText.contains('Failed host lookup') ||
+          errorText.contains('Network is unreachable') ||
+          errorText.contains('timed out');
+
+      if (isNetworkFailure && await OfflineDBService.isOfflineModeEnabled()) {
+        await OfflineStorageService.queueValuationSubmissionOffline(
+          valuationId: _valuationId!,
+          projectId: widget.project.id,
+          projectTitle: widget.project.title,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Network lost. Report submission queued and will auto-submit when online.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
+        return;
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -867,6 +1059,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     // Check if project is assigned to current user
     if (!widget.project.isAssigned) {
       return Scaffold(
@@ -908,7 +1101,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     final isSmallScreen = screenWidth < 360;
     
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Form(
         key: _formKey,
         child: NestedScrollView(
@@ -985,6 +1178,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    color: Theme.of(context).cardColor,
                     child: Padding(
                       padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                       child: Column(
@@ -995,10 +1189,10 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: Colors.blue[100],
+                                  color: isDark ? const Color(0xFF1E293B) : Colors.blue[100],
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Icon(Icons.folder_open, color: Colors.blue[700], size: 20),
+                                child: Icon(Icons.folder_open, color: isDark ? Colors.blue[200] : Colors.blue[700], size: 20),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -1007,10 +1201,10 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                                   children: [
                                     Text(
                                       'Project Information',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
+                                        color: isDark ? Colors.white : Colors.black87,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -1018,7 +1212,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                                       widget.project.title,
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.grey[700],
+                                        color: isDark ? Colors.grey[300] : Colors.grey[700],
                                       ),
                                     ),
                                   ],
@@ -1031,14 +1225,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.grey[50],
+                                color: isDark ? const Color(0xFF0F172A) : Colors.grey[50],
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 widget.project.description!,
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: Colors.grey[800],
+                                  color: isDark ? Colors.grey[200] : Colors.grey[800],
                                 ),
                               ),
                             ),
@@ -1108,6 +1302,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    color: Theme.of(context).cardColor,
                     child: Padding(
                       padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                       child: Column(
@@ -1117,12 +1312,12 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             children: [
                               Icon(Icons.category, color: Colors.blue[700], size: 20),
                               const SizedBox(width: 8),
-                              const Text(
+                              Text(
                                 'Category *',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
+                                  color: isDark ? Colors.white : Colors.black87,
                                 ),
                               ),
                             ],
@@ -1169,6 +1364,48 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                           icon: Icons.description,
                           maxLines: 3,
                         ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.lightbulb_outline),
+                            label: Text(_showSuggestions ? 'Hide suggestions' : 'Find similar items'),
+                            onPressed: () {
+                              setState(() {
+                                _showSuggestions = !_showSuggestions;
+                                _lastSuggestionQuery = _descriptionController.text.trim();
+                              });
+                            },
+                          ),
+                        ),
+                        if (_showSuggestions && _descriptionController.text.trim().length >= 2)
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: ItemSuggestionsWidget(
+                              initialQuery: _lastSuggestionQuery,
+                              category: _category,
+                              onConfirm: (item) {
+                                setState(() {
+                                  _descriptionController.text = (item['title'] ?? '').toString();
+                                  _showSuggestions = false;
+                                });
+                              },
+                              onEdit: (edited) {
+                                setState(() {
+                                  _descriptionController.text = (edited['title'] ?? '').toString();
+                                  _showSuggestions = false;
+                                });
+                              },
+                              onCreateNew: () {
+                                setState(() => _showSuggestions = false);
+                              },
+                            ),
+                          ),
                         const SizedBox(height: 16),
                         _buildModernTextField(
                           _estimatedValueController,
@@ -1200,7 +1437,17 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-            
+                  // Feature #12: Depreciation calculator (not applicable for land)
+                  if (_category != 'land') ...[
+                    DepreciationWidget(
+                      category: _category,
+                      onResult: (result) {
+                        _depreciationResult = result;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // Category-specific fields
                   if (_category == 'land') _buildLandFields(),
                   if (_category == 'building') _buildBuildingFields(),
@@ -1462,6 +1709,30 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   ),
                 ],
               ),
+              if (_calculationType != null) ...[
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: _calculationMethod,
+                  decoration: const InputDecoration(
+                    labelText: 'Method',
+                    prefixIcon: Icon(Icons.functions),
+                  ),
+                  items: _availableMethods
+                      .map(
+                        (m) => DropdownMenuItem<String>(
+                          value: m,
+                          child: Text(_calculationMethodLabels[m] ?? m),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _calculationMethod = v;
+                    });
+                  },
+                ),
+              ],
               // Calculation Input Fields (shown when type is selected)
               if (_calculationType != null) ...[
                 const SizedBox(height: 16),
@@ -1517,6 +1788,8 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       onTap: () {
         setState(() {
           _calculationType = value;
+          _calculationMethod =
+              value == 'appreciation' ? 'compound_annual' : 'reducing_balance';
           // Clear previous calculation inputs
           _rateController.clear();
           _yearsController.clear();
@@ -1597,24 +1870,46 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       return;
     }
 
-    // Calculate new price using compound interest formula
-    // For appreciation: new_price = old_price * (1 + rate/100)^years
-    // For depreciation: new_price = old_price * (1 - rate/100)^years
+    final method = _calculationMethod ??
+        (_calculationType == 'appreciation'
+            ? 'compound_annual'
+            : 'reducing_balance');
+
+    // Calculate using selected valuation adjustment method.
     double newPrice;
     if (_calculationType == 'appreciation') {
-      newPrice = currentValue * (1 + rate / 100);
-      // Apply compound interest for remaining years
-      for (int i = 1; i < years; i++) {
-        newPrice = newPrice * (1 + rate / 100);
+      switch (method) {
+        case 'simple_interest':
+          newPrice = currentValue * (1 + (rate / 100) * years);
+          break;
+        case 'compound_monthly':
+          newPrice = currentValue * math.pow(1 + (rate / 1200), years * 12).toDouble();
+          break;
+        case 'compound_annual':
+        default:
+          newPrice = currentValue * math.pow(1 + (rate / 100), years).toDouble();
+          break;
       }
     } else {
-      // depreciation
-      newPrice = currentValue * (1 - rate / 100);
-      // Apply compound depreciation for remaining years
-      for (int i = 1; i < years; i++) {
-        newPrice = newPrice * (1 - rate / 100);
+      switch (method) {
+        case 'straight_line':
+          newPrice = currentValue * (1 - (rate / 100) * years);
+          break;
+        case 'double_declining':
+          final factor = (2 * (rate / 100)).clamp(0.0, 1.0);
+          newPrice = currentValue;
+          for (int i = 0; i < years; i++) {
+            newPrice = newPrice * (1 - factor);
+          }
+          break;
+        case 'reducing_balance':
+        default:
+          newPrice = currentValue * math.pow(1 - (rate / 100), years).toDouble();
+          break;
       }
     }
+
+    if (newPrice < 0) newPrice = 0;
 
     // Round to 2 decimal places
     newPrice = double.parse(newPrice.toStringAsFixed(2));
@@ -2042,23 +2337,96 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        if (_existingPhotos.isNotEmpty || _selectedPhotos.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ..._existingPhotos.map((photo) => _buildPhotoThumbnail(
+        if (_existingPhotos.isNotEmpty || _selectedPhotos.isNotEmpty) ...[
+          if (_selectedPhotos.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Long-press and drag to reorder. Tap the star to mark as the primary photo.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: true,
+              itemCount: _selectedPhotos.length,
+              onReorder: (oldIndex, newIndex) {
+                setState(() {
+                  if (newIndex > oldIndex) newIndex -= 1;
+                  final photo = _selectedPhotos.removeAt(oldIndex);
+                  _selectedPhotos.insert(newIndex, photo);
+                  if (_photoMeta.length > oldIndex) {
+                    final m = _photoMeta.removeAt(oldIndex);
+                    _photoMeta.insert(newIndex.clamp(0, _photoMeta.length), m);
+                  }
+                  if (_primaryPhotoIndex == oldIndex) {
+                    _primaryPhotoIndex = newIndex;
+                  } else if (_primaryPhotoIndex > oldIndex && _primaryPhotoIndex <= newIndex) {
+                    _primaryPhotoIndex -= 1;
+                  } else if (_primaryPhotoIndex < oldIndex && _primaryPhotoIndex >= newIndex) {
+                    _primaryPhotoIndex += 1;
+                  }
+                });
+              },
+              itemBuilder: (ctx, i) {
+                final photo = _selectedPhotos[i];
+                return Padding(
+                  key: ValueKey(photo.path),
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          i == _primaryPhotoIndex ? Icons.star : Icons.star_border,
+                          color: i == _primaryPhotoIndex ? Colors.amber[700] : Colors.grey,
+                        ),
+                        tooltip: 'Mark as primary',
+                        onPressed: () => setState(() => _primaryPhotoIndex = i),
+                      ),
+                      SizedBox(
+                        width: 70,
+                        height: 70,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(photo, fit: BoxFit.cover),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          photo.path.split('/').last,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        onPressed: () => setState(() {
+                          _selectedPhotos.removeAt(i);
+                          if (i < _photoMeta.length) _photoMeta.removeAt(i);
+                          if (_primaryPhotoIndex >= _selectedPhotos.length) {
+                            _primaryPhotoIndex = _selectedPhotos.isEmpty ? 0 : _selectedPhotos.length - 1;
+                          }
+                        }),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+          if (_existingPhotos.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _existingPhotos.map((photo) => _buildPhotoThumbnail(
                 photoUrl: photo.photoUrl,
                 onDelete: () => _deletePhoto(photo),
-              )),
-              ..._selectedPhotos.map((photo) => _buildPhotoThumbnail(
-                photoFile: photo,
-                onDelete: () {
-                  setState(() => _selectedPhotos.remove(photo));
-                },
-              )),
-            ],
-          ),
+              )).toList(),
+            ),
+          ],
+        ],
       ],
     );
   }
