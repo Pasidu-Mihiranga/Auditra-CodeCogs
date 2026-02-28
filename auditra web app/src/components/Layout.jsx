@@ -11,19 +11,16 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { useAuth } from '../contexts/AuthContext';
-import { useThemeMode } from '../contexts/ThemeContext';
-import { roleMenuConfig, getRoleLabel } from '../utils/roleConfig';
+import { roleMenuConfig, getRoleLabel, resolveRoleKey } from '../utils/roleConfig';
 import NotificationDropdown from './NotificationDropdown';
+import UserAvatar from './UserAvatar';
 
 const DRAWER_WIDTH = 260;
 const DRAWER_COLLAPSED = 72;
 
 export default function Layout() {
   const { user, role, passwordChanged, logout } = useAuth();
-  const { mode, toggleTheme } = useThemeMode();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -32,7 +29,8 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
 
-  const menuItems = roleMenuConfig[role] || roleMenuConfig.unassigned;
+  const resolvedRole = resolveRoleKey(role);
+  const menuItems = roleMenuConfig[resolvedRole] || roleMenuConfig.unassigned;
   const currentWidth = isMobile ? DRAWER_WIDTH : (collapsed ? DRAWER_COLLAPSED : DRAWER_WIDTH);
   const c = theme.palette.custom;
 
@@ -71,18 +69,15 @@ export default function Layout() {
       <Divider sx={{ borderColor: c.sidebarDivider }} />
 
       {/* User info */}
-      <Box sx={{ p: collapsed && !isMobile ? 1.5 : 2, display: 'flex', alignItems: 'center', gap: 1.5, justifyContent: collapsed && !isMobile ? 'center' : 'flex-start' }}>
-        <Avatar
-          sx={{
-            width: 38,
-            height: 38,
-            bgcolor: c.sidebarAvatarBg,
-            border: `1.5px solid ${c.sidebarAvatarBorder}`,
-            flexShrink: 0,
-          }}
-        >
-          <PersonIcon sx={{ fontSize: 22, color: c.sidebarAccent }} />
-        </Avatar>
+      <Box
+        sx={{ p: collapsed && !isMobile ? 1.5 : 2, display: 'flex', alignItems: 'center', gap: 1.5, justifyContent: collapsed && !isMobile ? 'center' : 'flex-start', cursor: 'pointer' }}
+        onClick={() => navigate('/dashboard/profile')}
+      >
+        <UserAvatar
+          user={user}
+          size={38}
+          sx={{ border: `1.5px solid ${c.sidebarAvatarBorder}`, bgcolor: c.sidebarAvatarBg, flexShrink: 0 }}
+        />
         {(!collapsed || isMobile) && (
           <Box sx={{ overflow: 'hidden' }}>
             <Typography variant="body2" sx={{ fontWeight: 600, color: c.sidebarTextActive, lineHeight: 1.3 }} noWrap>
@@ -246,18 +241,8 @@ export default function Layout() {
             <NotificationDropdown />
 
             {/* User menu */}
-            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} sx={{ p: 0.5 }}>
-              <Avatar
-                sx={{
-                  width: 36,
-                  height: 36,
-                  bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(59,130,246,0.15)' : '#E8F4FD',
-                  transition: 'background-color 0.2s',
-                  '&:hover': { bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(59,130,246,0.25)' : '#D6ECF8' },
-                }}
-              >
-                <PersonIcon sx={{ fontSize: 22, color: 'primary.main' }} />
-              </Avatar>
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} sx={{ p: 0.5, ml: 0.5 }}>
+              <UserAvatar user={user} size={36} />
             </IconButton>
             <Menu
               anchorEl={anchorEl}

@@ -48,9 +48,14 @@ const projectService = {
 
   uploadDocument: (data) => {
     const formData = new FormData();
-    Object.entries(data).forEach(([key, value]) => {
+    const { visible_to_ids, ...rest } = data;
+    Object.entries(rest).forEach(([key, value]) => {
       if (value != null) formData.append(key, value);
     });
+    // Feature #11: append visibility list
+    if (visible_to_ids && visible_to_ids.length > 0) {
+      visible_to_ids.forEach((uid) => formData.append('visible_to_ids', uid));
+    }
     return axiosClient.post('/projects/documents/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -64,6 +69,19 @@ const projectService = {
 
   mdGmReject: (projectId) =>
     axiosClient.post(`/projects/${projectId}/md-gm-reject/`),
+
+  // Admin approval endpoints (for direct projects)
+  adminApprove: (projectId) =>
+    axiosClient.post(`/projects/${projectId}/admin-approve/`),
+
+  adminReject: (projectId, reason) =>
+    axiosClient.post(`/projects/${projectId}/admin-reject/`, { reason }),
+
+  requestAdminApproval: (projectId) =>
+    axiosClient.post(`/projects/${projectId}/request-admin-approval/`),
+
+  getAdminPendingProjects: (status = 'all') =>
+    axiosClient.get('/projects/admin-pending-projects/', { params: { status } }),
 
   checkEmail: (email, roleType) =>
     axiosClient.post('/projects/check-email/', { email, role_type: roleType }),
@@ -80,6 +98,9 @@ const projectService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+
+  initiatePayHerePayment: (projectId) =>
+    axiosClient.post(`/projects/${projectId}/initiate-payhere-payment/`),
 
   approvePayment: (projectId, coordinatorNotes = '') =>
     axiosClient.post(`/projects/${projectId}/approve-payment/`, { coordinator_notes: coordinatorNotes }),

@@ -1,23 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Grid, Chip, Button, Alert,
   Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions,
   Divider, IconButton, Tooltip, FormControl, InputLabel, TextField,
-  LinearProgress
+  LinearProgress, OutlinedInput, Checkbox, ListItemText, CircularProgress,
 } from '@mui/material';
 import {
   ArrowBack, PersonAdd, PlayArrow, CheckCircle, Cancel, Lock, Edit,
-  Timeline as TimelineIcon, Update, Description, Download, Delete,
+  Timeline as TimelineIcon, Update, Description, Download, Delete, Visibility,
   EventNote, AssignmentInd, FactCheck, Payment, Send, Receipt,
   HourglassEmpty, AttachMoney, AssignmentTurnedIn, Block, AttachFile
 } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
-import { formatDate, formatDateTime, getPriorityColor, capitalize } from '../../utils/helpers';
+import InfoField from '../../components/InfoField';
+import PriorityChip from '../../components/PriorityChip';
+import { formatDate, formatDateTime, formatFileSize } from '../../utils/helpers';
 import { useAuth } from '../../contexts/AuthContext';
 import ReportHistory from '../../components/ReportHistory';
+import AssignUserDialog from '../../components/project-detail/AssignUserDialog';
+import ProjectDetailDialogs from '../../components/project-detail/ProjectDetailDialogs';
+import ProjectDocumentsSection from '../../components/project-detail/ProjectDocumentsSection';
+import ProjectTimelineReportsSection from '../../components/project-detail/ProjectTimelineReportsSection';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -60,6 +66,12 @@ export default function ProjectDetail() {
   // Document management states
   const [docUploading, setDocUploading] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState(null);
+  const [docVisibilityDialog, setDocVisibilityDialog] = useState({ open: false, file: null });
+  const [docVisibleTo, setDocVisibleTo] = useState([]);
+  const docFileRef = useRef(null);
+
+  // Admin approval request state
+  const [approvalRequestLoading, setApprovalRequestLoading] = useState(false);
 
   const fetchProject = async () => {
     try {
@@ -306,48 +318,115 @@ export default function ProjectDetail() {
     }
   };
 
-  // Document handlers
-  const handleDocumentUpload = async (e) => {
+  // Document handlers – show visibility picker first
+  const handleDocumentFileSelected = (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
+    setDocVisibilityDialog({ open: true, file: files[0] });
+    setDocVisibleTo([]);
+    e.target.value = '';
+  };
+
+  const handleDocumentUpload = async () => {
+    const file = docVisibilityDialog.file;
+    if (!file) return;
+    setDocVisibilityDialog({ open: false, file: null });
     setDocUploading(true);
     setError('');
-    for (const file of files) {
-      try {
-        await projectService.uploadDocument({
-          project: id,
-          file,
-          name: file.name.replace(/\.[^/.]+$/, ''),
+    const tempId = `temp-${Date.now()}`;
+    const tempDoc = {
+      id: tempId,
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      file_size: file.size,
+      uploaded_at: new Date().toISOString(),
+      uploaded_by_username: 'Uploading...',
+      file_url: '',
+      _optimistic: true,
+    };
+    // Show uploaded item instantly in UI before server response.
+    setProject((prev) => {
+      if (!prev) return prev;
+      const existing = Array.isArray(prev.documents) ? prev.documents : [];
+      return { ...prev, documents: [tempDoc, ...existing] };
+    });
+    try {
+      const res = await projectService.uploadDocument({
+        project: id,
+        file,
+        name: file.name.replace(/\.[^/.]+$/, ''),
+        visible_to_ids: docVisibleTo,
+      });
+      const createdDoc = res?.data?.id ? res.data : (res?.data?.data?.id ? res.data.data : null);
+      if (createdDoc?.id) {
+        // Replace optimistic row with authoritative server row.
+        setProject((prev) => {
+          if (!prev) return prev;
+          const existing = Array.isArray(prev.documents) ? prev.documents : [];
+          const deduped = existing.filter((d) => d.id !== tempId && d.id !== createdDoc.id);
+          return { ...prev, documents: [createdDoc, ...deduped] };
         });
-      } catch {
-        setError(`Failed to upload ${file.name}`);
+      } else {
+        // If response shape is unexpected, remove optimistic row and fallback to full refresh.
+        setProject((prev) => {
+          if (!prev) return prev;
+          const existing = Array.isArray(prev.documents) ? prev.documents : [];
+          return { ...prev, documents: existing.filter((d) => d.id !== tempId) };
+        });
       }
+      // Ensure auto-refresh after upload (immediate + delayed consistency refresh).
+      await fetchProject();
+      setTimeout(() => { fetchProject(); }, 800);
+      setSuccess('Document uploaded successfully');
+    } catch {
+      // Roll back optimistic row on failure.
+      setProject((prev) => {
+        if (!prev) return prev;
+        const existing = Array.isArray(prev.documents) ? prev.documents : [];
+        return { ...prev, documents: existing.filter((d) => d.id !== tempId) };
+      });
+      setError(`Failed to upload ${file.name}`);
+    } finally {
+      setDocUploading(false);
     }
-    e.target.value = '';
-    await fetchProject();
-    setDocUploading(false);
-    setSuccess('Document(s) uploaded successfully');
   };
 
   const handleDeleteDocument = async (docId) => {
     setDeletingDocId(docId);
     setError('');
+    // Optimistic remove for instant UI feedback.
+    setProject((prev) => {
+      if (!prev) return prev;
+      const existing = Array.isArray(prev.documents) ? prev.documents : [];
+      return { ...prev, documents: existing.filter((d) => d.id !== docId) };
+    });
     try {
       await projectService.deleteDocument(docId);
       setSuccess('Document deleted');
+      // Ensure auto-refresh after delete (immediate + delayed consistency refresh).
       await fetchProject();
+      setTimeout(() => { fetchProject(); }, 800);
     } catch {
+      // Re-sync if optimistic delete was wrong due to API failure.
+      await fetchProject();
       setError('Failed to delete document');
     } finally {
       setDeletingDocId(null);
     }
   };
 
-  const formatFileSize = (bytes) => {
-    if (!bytes) return '-';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  // Admin approval request handler
+  const handleRequestAdminApproval = async () => {
+    setApprovalRequestLoading(true);
+    setError('');
+    try {
+      await projectService.requestAdminApproval(id);
+      setSuccess('Admin approval request sent successfully!');
+      await fetchProject();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send approval request');
+    } finally {
+      setApprovalRequestLoading(false);
+    }
   };
 
   if (loading) return <LoadingSpinner />;
@@ -374,7 +453,23 @@ export default function ProjectDetail() {
     requiredAssignments.splice(2, 0, { label: 'Agent', assigned: !!project.assigned_agent });
   }
   const allAssigned = requiredAssignments.every(r => r.assigned);
-  const canStartProject = allAssigned && isPaymentApproved;
+  const isAdminApproved = project.admin_approval_status === 'not_required' || project.admin_approval_status === 'approved';
+  const canStartProject = allAssigned && isPaymentApproved && isAdminApproved;
+  const visibilityMembers = [
+    { id: project.coordinator, name: project.coordinator_name || project.coordinator_username, role: 'Coordinator' },
+    { id: project.assigned_field_officer, name: project.assigned_field_officer_name || project.assigned_field_officer_username, role: 'Field Officer' },
+    { id: project.assigned_accessor, name: project.assigned_accessor_name || project.assigned_accessor_username, role: 'Accessor' },
+    { id: project.assigned_senior_valuer, name: project.assigned_senior_valuer_name || project.assigned_senior_valuer_username, role: 'Senior Valuer' },
+    { id: project.assigned_client, name: project.assigned_client_name || project.assigned_client_username, role: 'Client' },
+    { id: project.assigned_agent, name: project.assigned_agent_name || project.assigned_agent_username, role: 'Agent' },
+  ]
+    .filter((m) => m.id && m.name)
+    .reduce((acc, member) => {
+      if (!acc.some((m) => Number(m.id) === Number(member.id))) {
+        acc.push(member);
+      }
+      return acc;
+    }, []);
 
   return (
     <Box>
@@ -400,6 +495,71 @@ export default function ProjectDetail() {
         </Alert>
       )}
 
+      {/* Admin Approval Status Alerts */}
+      {project.admin_approval_status === 'not_submitted' && isCoordinator && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Admin Approval Required</Typography>
+              <Typography variant="body2">
+                This project requires admin approval before it can be started. Click the button to send your request.
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Send />}
+              onClick={handleRequestAdminApproval}
+              disabled={approvalRequestLoading}
+              sx={{ ml: 3, whiteSpace: 'nowrap', fontWeight: 600, minWidth: 'fit-content' }}
+            >
+              {approvalRequestLoading ? 'Sending...' : 'Request Approval'}
+            </Button>
+          </Box>
+        </Alert>
+      )}
+      {project.admin_approval_status === 'pending' && (
+        <Alert severity="warning" sx={{ mb: 2 }} icon={<HourglassEmpty />}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Admin Approval Pending</Typography>
+          <Typography variant="body2">
+            Your approval request has been sent and is awaiting admin review.
+          </Typography>
+        </Alert>
+      )}
+      {project.admin_approval_status === 'rejected' && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Admin Approval Rejected</Typography>
+              <Typography variant="body2">
+                Reason: {project.admin_rejection_reason || 'No reason provided'}
+              </Typography>
+            </Box>
+            {isCoordinator && (
+              <Button
+                variant="outlined"
+                color="error"
+                size="small"
+                startIcon={<Send />}
+                onClick={handleRequestAdminApproval}
+                disabled={approvalRequestLoading}
+                sx={{ ml: 2, whiteSpace: 'nowrap', fontWeight: 600 }}
+              >
+                {approvalRequestLoading ? 'Sending...' : 'Resubmit'}
+              </Button>
+            )}
+          </Box>
+        </Alert>
+      )}
+      {project.admin_approval_status === 'approved' && (
+        <Alert severity="success" sx={{ mb: 2 }} icon={<CheckCircle />}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Admin Approved</Typography>
+          <Typography variant="body2">
+            This project has been approved by the admin.
+          </Typography>
+        </Alert>
+      )}
+
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
@@ -407,7 +567,7 @@ export default function ProjectDetail() {
               <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>{project.title}</Typography>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <StatusChip status={project.status} label={project.status_display || project.status} />
-                <Chip label={capitalize(project.priority)} size="small" sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(project.priority)}50` }} />
+                <PriorityChip priority={project.priority} />
               </Box>
             </Box>
             {isCoordinator && (
@@ -452,7 +612,7 @@ export default function ProjectDetail() {
                     </Select>
                   </FormControl>
                 )}
-                {/* Cancel Project Button - always available unless cancelled or has pending request */}
+                {/* Cancel Project Button */}
                 {project.status !== 'cancelled' && (!cancellationStatus?.has_request || cancellationStatus?.request?.status === 'rejected') && (
                   <Button
                     variant="outlined"
@@ -479,20 +639,44 @@ export default function ProjectDetail() {
           
           <Grid container spacing={3}>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Start Date</Typography>
-              <Typography sx={{ fontWeight: 600 }}>{formatDate(project.start_date)}</Typography>
+              <InfoField
+                label="Start Date"
+                value={formatDate(project.start_date)}
+                labelVariant="body2"
+                labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                valueVariant="body1"
+                valueSx={{ fontWeight: 600 }}
+              />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>End Date</Typography>
-              <Typography sx={{ fontWeight: 600 }}>{formatDate(project.end_date)}</Typography>
+              <InfoField
+                label="End Date"
+                value={formatDate(project.end_date)}
+                labelVariant="body2"
+                labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                valueVariant="body1"
+                valueSx={{ fontWeight: 600 }}
+              />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Project Coordinator</Typography>
-              <Typography sx={{ fontWeight: 600 }}>{project.coordinator_name || project.coordinator_username || '-'}</Typography>
+              <InfoField
+                label="Project Coordinator"
+                value={project.coordinator_name || project.coordinator_username}
+                labelVariant="body2"
+                labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                valueVariant="body1"
+                valueSx={{ fontWeight: 600 }}
+              />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Date Created</Typography>
-              <Typography sx={{ fontWeight: 600 }}>{formatDate(project.created_at)}</Typography>
+              <InfoField
+                label="Date Created"
+                value={formatDate(project.created_at)}
+                labelVariant="body2"
+                labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                valueVariant="body1"
+                valueSx={{ fontWeight: 600 }}
+              />
             </Grid>
           </Grid>
         </CardContent>
@@ -507,8 +691,8 @@ export default function ProjectDetail() {
                 <AssignmentTurnedIn color="primary" />
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>Project Requirements</Typography>
               </Box>
-              <Chip 
-                label={`${requiredAssignments.filter(r => r.assigned).length + (isPaymentApproved ? 1 : 0)}/${requiredAssignments.length + 1}`}
+              <Chip
+                label={`${requiredAssignments.filter(r => r.assigned).length + (isPaymentApproved ? 1 : 0) + (project.admin_approval_status !== 'not_required' && isAdminApproved ? 1 : 0)}/${requiredAssignments.length + 1 + (project.admin_approval_status !== 'not_required' ? 1 : 0)}`}
                 size="small"
                 color={canStartProject ? 'success' : 'default'}
                 sx={{ fontWeight: 600 }}
@@ -516,7 +700,7 @@ export default function ProjectDetail() {
             </Box>
             
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-              {[...requiredAssignments, { label: 'Payment', assigned: isPaymentApproved }].map(({ label, assigned }) => (
+              {[...requiredAssignments, { label: 'Payment', assigned: isPaymentApproved }, ...(project.admin_approval_status !== 'not_required' ? [{ label: 'Admin Approval', assigned: isAdminApproved }] : [])].map(({ label, assigned }) => (
                 <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   {assigned ? (
                     <CheckCircle sx={{ fontSize: 20, color: 'success.main' }} />
@@ -558,10 +742,10 @@ export default function ProjectDetail() {
                 Rs. {Number(project.estimated_value || 50000).toLocaleString()}
               </Typography>
             </Box>
-            
+
             {/* Status Steps */}
-            <Box sx={{ 
-              display: 'flex', 
+            <Box sx={{
+              display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               p: 2,
@@ -575,18 +759,18 @@ export default function ProjectDetail() {
                 { key: 'verification', label: 'Verification', done: paymentStatus === 'approved' },
                 { key: 'completed', label: 'Completed', done: paymentStatus === 'approved' }
               ].map((step, index, arr) => (
-                <Box 
+                <Box
                   key={step.key}
-                  sx={{ 
+                  sx={{
                     display: 'flex',
                     alignItems: 'center',
                     flex: 1
                   }}
                 >
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 70 }}>
-                    <Box sx={{ 
-                      width: 24, 
-                      height: 24, 
+                    <Box sx={{
+                      width: 24,
+                      height: 24,
                       borderRadius: '50%',
                       bgcolor: step.done ? 'success.main' : 'grey.300',
                       display: 'flex',
@@ -610,7 +794,7 @@ export default function ProjectDetail() {
                 </Box>
               ))}
             </Box>
-            
+
             {/* Status and Actions */}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -618,7 +802,7 @@ export default function ProjectDetail() {
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  bgcolor: 
+                  bgcolor:
                     paymentStatus === 'approved' ? 'success.main' :
                     paymentStatus === 'rejected' ? 'error.main' :
                     paymentStatus === 'submitted' || paymentStatus === 'under_review' ? 'info.main' :
@@ -633,20 +817,21 @@ export default function ProjectDetail() {
                    paymentStatus === 'rejected' ? 'Payment verification failed' : 'Unknown status'}
                 </Typography>
               </Box>
-              
+
               {paymentStatus === 'pending' && (
-                <Button
-                  variant="contained"
-                  startIcon={<Send />}
-                  onClick={handleSendPaymentRequest}
-                  disabled={paymentLoading || !project.assigned_client}
-                  size="small"
-                  sx={{ alignSelf: 'flex-start' }}
-                >
-                  {paymentLoading ? 'Sending...' : 'Send Request'}
-                </Button>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<Send />}
+                    onClick={handleSendPaymentRequest}
+                    disabled={paymentLoading || !project.assigned_client}
+                    size="small"
+                  >
+                    {paymentLoading ? 'Sending...' : 'Send Request'}
+                  </Button>
+                </Box>
               )}
-              
+
               {(paymentStatus === 'submitted' || paymentStatus === 'under_review') && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                   {payment?.bank_slip_url && (
@@ -683,13 +868,13 @@ export default function ProjectDetail() {
                 </Box>
               )}
             </Box>
-            
+
             {!project.assigned_client && paymentStatus === 'pending' && (
               <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 2 }}>
                 Please assign a client before sending payment request.
               </Typography>
             )}
-            
+
             {payment?.rejection_reason && paymentStatus === 'rejected' && (
               <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 2 }}>
                 Reason: {payment.rejection_reason}
@@ -808,12 +993,12 @@ export default function ProjectDetail() {
                 ))}
               </Box>
             </Grid>
-            {/* Second column: Client, Agent */}
+            {/* Second column: Client, Agent (if applicable) */}
             <Grid item xs={12} sm={6}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {[
                   { label: 'Client', key: 'assigned_client', type: 'client', nameKey: 'assigned_client_name' },
-                  { label: 'Agent', key: 'assigned_agent', type: 'agent', nameKey: 'assigned_agent_name' },
+                  ...(project.has_agent ? [{ label: 'Agent', key: 'assigned_agent', type: 'agent', nameKey: 'assigned_agent_name' }] : []),
                 ].map(({ label, key, type, nameKey }) => (
                   <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2 }}>
                     <Box>
@@ -840,477 +1025,111 @@ export default function ProjectDetail() {
             </Typography>
             <Box sx={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflowX: 'auto' }}>
               <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Full Name</Typography>
-                <Typography sx={{ fontWeight: 600 }}>{project.client_info.name || '-'}</Typography>
+                <InfoField
+                  label="Full Name"
+                  value={project.client_info.name}
+                  labelVariant="body2"
+                  labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                  valueVariant="body1"
+                  valueSx={{ fontWeight: 600 }}
+                />
               </Box>
               <Box sx={{ minWidth: 200, flex: '1 1 auto' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Email Address</Typography>
-                <Typography sx={{ fontWeight: 600 }}>{project.client_info.email || '-'}</Typography>
+                <InfoField
+                  label="Email Address"
+                  value={project.client_info.email}
+                  labelVariant="body2"
+                  labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                  valueVariant="body1"
+                  valueSx={{ fontWeight: 600 }}
+                />
               </Box>
               <Box sx={{ minWidth: 120, flex: '1 1 auto' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Phone Number</Typography>
-                <Typography sx={{ fontWeight: 600 }}>{project.client_info.phone || '-'}</Typography>
+                <InfoField
+                  label="Phone Number"
+                  value={project.client_info.phone}
+                  labelVariant="body2"
+                  labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                  valueVariant="body1"
+                  valueSx={{ fontWeight: 600 }}
+                />
               </Box>
               <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Company</Typography>
-                <Typography sx={{ fontWeight: 600 }}>{project.client_info.company || '-'}</Typography>
+                <InfoField
+                  label="Company"
+                  value={project.client_info.company}
+                  labelVariant="body2"
+                  labelSx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}
+                  valueVariant="body1"
+                  valueSx={{ fontWeight: 600 }}
+                />
               </Box>
             </Box>
           </CardContent>
         </Card>
       )}
 
-      <Dialog open={!!assignDialog} onClose={() => { setAssignDialog(null); setSelectedUser(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
-            Assign {assignDialog?.replace(/_/g, ' ')}
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Please select a {assignDialog?.replace(/_/g, ' ')} to assign to this project.
-          </Typography>
-          <Select
-            fullWidth
-            value={selectedUser}
-            onChange={(e) => setSelectedUser(e.target.value)}
-            displayEmpty
-            sx={{ mt: 1 }}
-          >
-            <MenuItem value="" disabled>
-              {assignDialog === 'field_officer' && 'Select a Field Officer'}
-              {assignDialog === 'accessor' && 'Select an Accessor'}
-              {assignDialog === 'senior_valuer' && 'Select a Senior Valuer'}
-              {assignDialog === 'client' && 'Select a Client'}
-              {assignDialog === 'agent' && 'Select an Agent'}
-            </MenuItem>
-            {availableUsers.map((u) => (
-              <MenuItem key={u.id} value={u.id}>
-                {u.full_name || `${u.first_name} ${u.last_name}`.trim() || u.username}
-                {u.email ? ` (${u.email})` : ''}
-                {u.assigned_projects_count > 0 ? ` — ${u.assigned_projects_count} project${u.assigned_projects_count > 1 ? 's' : ''}` : ''}
-              </MenuItem>
-            ))}
-          </Select>
-          {availableUsers.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontStyle: 'italic' }}>
-              No {assignDialog?.replace(/_/g, ' ')}s are currently available.
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => { setAssignDialog(null); setSelectedUser(''); }}>Cancel</Button>
-          <Button variant="contained" onClick={handleAssign} disabled={!selectedUser}>Confirm Assignment</Button>
-        </DialogActions>
-      </Dialog>
+      <AssignUserDialog
+        open={!!assignDialog}
+        assignType={assignDialog}
+        selectedUser={selectedUser}
+        availableUsers={availableUsers}
+        onClose={() => {
+          setAssignDialog(null);
+          setSelectedUser('');
+        }}
+        onChangeUser={setSelectedUser}
+        onConfirm={handleAssign}
+      />
 
-      {/* Project Documents */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AttachFile color="primary" />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>Project Documents</Typography>
-            </Box>
-            {isCoordinator && project.status !== 'cancelled' && (
-              <Button
-                variant="outlined"
-                component="label"
-                size="small"
-                startIcon={<Description />}
-                disabled={docUploading}
-              >
-                {docUploading ? 'Uploading...' : 'Upload Document'}
-                <input type="file" hidden multiple onChange={handleDocumentUpload} />
-              </Button>
-            )}
-          </Box>
+      <ProjectDocumentsSection
+        project={project}
+        isCoordinator={isCoordinator}
+        docUploading={docUploading}
+        docFileRef={docFileRef}
+        onDocumentFileSelected={handleDocumentFileSelected}
+        deletingDocId={deletingDocId}
+        onDeleteDocument={handleDeleteDocument}
+      />
 
-          {docUploading && <LinearProgress sx={{ mb: 2 }} />}
+      <ProjectTimelineReportsSection project={project} />
 
-          {project.documents && project.documents.length > 0 ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {project.documents.map((doc) => (
-                <Box
-                  key={doc.id}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    p: 2,
-                    bgcolor: (t) => t.palette.custom?.cardInner || (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f5f7fa'),
-                    borderRadius: 2,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
-                    <Description sx={{ color: 'primary.main' }} />
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{doc.name}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatFileSize(doc.file_size)} &middot; Uploaded {formatDate(doc.uploaded_at)}
-                        {doc.uploaded_by_username ? ` by ${doc.uploaded_by_username}` : ''}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
-                    <Tooltip title="Download">
-                      <IconButton size="small" href={doc.file_url} target="_blank" component="a">
-                        <Download fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    {isCoordinator && (
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDeleteDocument(doc.id)}
-                          disabled={deletingDocId === doc.id}
-                        >
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                  </Box>
-                </Box>
-              ))}
-            </Box>
-          ) : (
-            <Box sx={{ py: 3, textAlign: 'center' }}>
-              <Description sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-              <Typography color="text.secondary">No documents have been attached to this project.</Typography>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Project Timeline & Approved Reports */}
-      <Grid container spacing={3} sx={{ mt: 1 }}>
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', minHeight: 400 }}>
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TimelineIcon color="primary" />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>Project Timeline</Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Activity history and status updates
-              </Typography>
-
-              {project.history && project.history.length > 0 ? (
-                <Box sx={{ position: 'relative', pl: 3, '&::before': { content: '""', position: 'absolute', left: 8, top: 10, bottom: 10, width: '2px', bgcolor: 'divider' } }}>
-                  {project.history.slice().reverse().map((event, index) => (
-                    <Box key={event.id} sx={{ mb: 3, position: 'relative' }}>
-                      <Box sx={{
-                        position: 'absolute',
-                        left: -21,
-                        top: 4,
-                        width: 12,
-                        height: 12,
-                        borderRadius: '50%',
-                        bgcolor: index === 0 ? 'primary.main' : 'divider',
-                        border: '2px solid white',
-                        boxShadow: '0 0 0 2px rgba(0,0,0,0.05)',
-                        zIndex: 1,
-                      }} />
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                        {event.status_display || event.status}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                        {event.notes}
-                      </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <AssignmentInd sx={{ fontSize: 14 }} /> {event.created_by_name || event.created_by_username}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">•</Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <EventNote sx={{ fontSize: 14 }} /> {formatDate(event.created_at)}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Box sx={{ py: 4, textAlign: 'center' }}>
-                  <Typography color="text.secondary">No activity has been recorded yet.</Typography>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', minHeight: 400 }}>
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <FactCheck color="primary" />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>Final Valuation Reports</Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Approved reports available for download
-              </Typography>
-
-              {project.valuations && project.valuations.filter(v => v.status === 'approved').length > 0 ? (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {project.valuations.filter(v => v.status === 'approved').map(valuation => (
-                    <Box key={valuation.id} sx={{ p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                        <Box>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                            {valuation.category_display} Report
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Approved by Senior Valuer
-                          </Typography>
-                        </Box>
-                        {valuation.final_report_url && (
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<Download />}
-                            href={valuation.final_report_url}
-                            target="_blank"
-                          >
-                            PDF
-                          </Button>
-                        )}
-                      </Box>
-                      {valuation.senior_valuer_comments && (
-                        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic', color: 'text.secondary', fontSize: '0.8125rem' }}>
-                          "{valuation.senior_valuer_comments}"
-                        </Typography>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Box sx={{ py: 4, textAlign: 'center' }}>
-                  <Description sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-                  <Typography color="text.secondary">No approved reports are available at this time.</Typography>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Valuation Report History */}
-      {project.valuations && project.valuations.length > 0 && (
-        <Card sx={{ mt: 3 }}>
-          <CardContent sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <TimelineIcon color="primary" />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>Valuation Report History</Typography>
-            </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Submission and review history for each valuation report
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {project.valuations.map(v => (
-                <Box key={v.id} sx={{ p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      {v.category_display || v.category || 'Valuation'}
-                    </Typography>
-                    <StatusChip status={v.status} label={v.status_display || v.status} />
-                  </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Field Officer: {v.field_officer_name || v.field_officer_username}
-                  </Typography>
-                  <ReportHistory history={v.history} />
-                </Box>
-              ))}
-            </Box>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Payment Rejection Dialog */}
-      <Dialog open={rejectPaymentDialog} onClose={() => !paymentLoading && setRejectPaymentDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>
-            Reject Payment
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Please provide a reason for rejecting this payment. The client will be notified and may re-submit a bank slip.
-          </Typography>
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            label="Rejection Reason"
-            placeholder="Please specify the reason for rejection (e.g., bank slip is unclear, amount does not match the invoice, etc.)"
-            value={paymentRejectReason}
-            onChange={(e) => setPaymentRejectReason(e.target.value)}
-            required
-            error={!paymentRejectReason.trim() && rejectPaymentDialog}
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setRejectPaymentDialog(false)} disabled={paymentLoading}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleRejectPayment}
-            disabled={paymentLoading || !paymentRejectReason.trim()}
-          >
-            {paymentLoading ? 'Processing...' : 'Confirm Rejection'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Cancellation Request Dialog */}
-      <Dialog open={cancelDialog} onClose={() => !cancelLoading && setCancelDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>
-            Request Project Cancellation
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Please provide a reason for cancelling this project. Your request will be sent to the admin for review. All assigned team members will be notified of the decision.
-          </Typography>
-          <TextField
-            fullWidth
-            multiline
-            rows={4}
-            label="Cancellation Reason"
-            placeholder="Please explain why this project needs to be cancelled..."
-            value={cancelReason}
-            onChange={(e) => setCancelReason(e.target.value)}
-            required
-            error={!cancelReason.trim() && cancelDialog}
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setCancelDialog(false)} disabled={cancelLoading}>
-            Go Back
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleRequestCancellation}
-            disabled={cancelLoading || !cancelReason.trim()}
-            startIcon={<Block />}
-          >
-            {cancelLoading ? 'Submitting...' : 'Submit Request'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Agent Payment Dialog */}
-      <Dialog open={agentPaymentDialog} onClose={() => !agentPaymentLoading && setAgentPaymentDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Record Agent Payment
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Record the payment made to the agent for this project. The agent will be able to see this in their payments tab.
-          </Typography>
-          <TextField
-            fullWidth
-            label="Payment Amount (Rs.)"
-            type="number"
-            value={agentPaymentAmount}
-            onChange={(e) => setAgentPaymentAmount(e.target.value)}
-            required
-            sx={{ mb: 2 }}
-            inputProps={{ min: 0, step: 0.01 }}
-          />
-          <TextField
-            fullWidth
-            multiline
-            rows={2}
-            label="Notes (Optional)"
-            placeholder="Any notes about this payment..."
-            value={agentPaymentNotes}
-            onChange={(e) => setAgentPaymentNotes(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setAgentPaymentDialog(false)} disabled={agentPaymentLoading}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleRecordAgentPayment}
-            disabled={agentPaymentLoading || !agentPaymentAmount || Number(agentPaymentAmount) <= 0}
-            startIcon={<AttachMoney />}
-          >
-            {agentPaymentLoading ? 'Recording...' : 'Record Payment'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Commission Report Dialog */}
-      <Dialog open={reportDialog} onClose={() => { setReportDialog(false); setGeneratedReport(null); }} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Commission Report
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          {generatedReport && (
-            <Box>
-              <Alert severity="success" sx={{ mb: 2 }}>
-                Commission report generated successfully!
-              </Alert>
-              <Box sx={{ p: 2, bgcolor: (t) => t.palette.custom?.cardInner || '#f5f5f5', borderRadius: 2, mb: 2 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Project</Typography>
-                <Typography sx={{ fontWeight: 600, mb: 1 }}>{generatedReport.project_title}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Agent</Typography>
-                <Typography sx={{ fontWeight: 600, mb: 1 }}>{generatedReport.agent_name}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Commission Amount</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                  Rs. {Number(generatedReport.commission_amount).toLocaleString()}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                {generatedReport.report_file_url && (
-                  <Button
-                    variant="outlined"
-                    startIcon={<Download />}
-                    href={generatedReport.report_file_url}
-                    target="_blank"
-                    size="small"
-                  >
-                    Download Report
-                  </Button>
-                )}
-                {!generatedReport.sent_to_agent && (
-                  <Button
-                    variant="contained"
-                    startIcon={<Send />}
-                    onClick={handleSendReport}
-                    disabled={sendingReport}
-                    size="small"
-                  >
-                    {sendingReport ? 'Sending...' : 'Send to Agent'}
-                  </Button>
-                )}
-                {generatedReport.sent_to_agent && (
-                  <Alert severity="info" sx={{ flex: 1 }}>
-                    Report has been sent to the agent.
-                  </Alert>
-                )}
-              </Box>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => { setReportDialog(false); setGeneratedReport(null); }}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ProjectDetailDialogs
+        rejectPaymentDialog={rejectPaymentDialog}
+        paymentLoading={paymentLoading}
+        onCloseRejectPaymentDialog={() => setRejectPaymentDialog(false)}
+        paymentRejectReason={paymentRejectReason}
+        onChangePaymentRejectReason={setPaymentRejectReason}
+        onConfirmRejectPayment={handleRejectPayment}
+        cancelDialog={cancelDialog}
+        cancelLoading={cancelLoading}
+        onCloseCancelDialog={() => setCancelDialog(false)}
+        cancelReason={cancelReason}
+        onChangeCancelReason={setCancelReason}
+        onConfirmCancellation={handleRequestCancellation}
+        agentPaymentDialog={agentPaymentDialog}
+        agentPaymentLoading={agentPaymentLoading}
+        onCloseAgentPaymentDialog={() => setAgentPaymentDialog(false)}
+        agentPaymentAmount={agentPaymentAmount}
+        onChangeAgentPaymentAmount={setAgentPaymentAmount}
+        agentPaymentNotes={agentPaymentNotes}
+        onChangeAgentPaymentNotes={setAgentPaymentNotes}
+        onConfirmAgentPayment={handleRecordAgentPayment}
+        reportDialog={reportDialog}
+        onCloseReportDialog={() => {
+          setReportDialog(false);
+          setGeneratedReport(null);
+        }}
+        generatedReport={generatedReport}
+        sendingReport={sendingReport}
+        onSendReport={handleSendReport}
+        docVisibilityDialog={docVisibilityDialog}
+        onCloseDocVisibilityDialog={() => setDocVisibilityDialog({ open: false, file: null })}
+        docVisibleTo={docVisibleTo}
+        onChangeDocVisibleTo={setDocVisibleTo}
+        visibilityMembers={visibilityMembers}
+        onUploadDocument={handleDocumentUpload}
+      />
     </Box>
   );
 }

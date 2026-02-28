@@ -13,27 +13,27 @@ import RegisterPage from './pages/auth/RegisterPage';
 // Admin pages
 import AdminDashboard from './pages/admin/AdminDashboard';
 import UserManagement from './pages/admin/UserManagement';
-import AttendanceSummary from './pages/admin/AttendanceSummary';
-import LeaveManagement from './pages/admin/LeaveManagement';
-import PaymentManagement from './pages/admin/PaymentManagement';
+import AttendanceSummary from './pages/hr/AttendanceSummary';
+import LeaveManagement from './pages/hr/LeaveManagement';
+import PaymentManagement from './pages/hr/PaymentManagement';
 import RemovalRequests from './pages/admin/RemovalRequests';
 import SystemLogs from './pages/admin/SystemLogs';
 import ClientSubmissions from './pages/admin/ClientSubmissions';
 import EmployeeSubmissions from './pages/admin/EmployeeSubmissions';
 import CancellationRequests from './pages/admin/CancellationRequests';
+import DirectProjectApprovals from './pages/admin/DirectProjectApprovals';
+import InvitationTracking from './pages/admin/InvitationTracking';
+import AllProjectItems from './pages/admin/AllProjectItems';
 
 // Coordinator pages
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import ProjectList from './pages/coordinator/ProjectList';
 import CreateProject from './pages/coordinator/CreateProject';
-import ProjectDetail from './pages/coordinator/ProjectDetail';
 import EditProject from './pages/coordinator/EditProject';
 import AssignedSubmissions from './pages/coordinator/AssignedSubmissions';
 
 // HR pages
 import HRDashboard from './pages/hr/HRDashboard';
-import LeaveRequests from './pages/hr/LeaveRequests';
-import AttendanceView from './pages/hr/AttendanceView';
 import RemovalRequest from './pages/hr/RemovalRequest';
 
 // Accessor pages
@@ -57,7 +57,12 @@ import MyPaymentSlips from './pages/shared/MyPaymentSlips';
 import PersonalInfo from './pages/shared/PersonalInfo';
 import ChangePassword from './pages/shared/ChangePassword';
 import ForceChangePassword from './pages/auth/ForceChangePassword';
+import Profile from './pages/shared/Profile';
+import NotificationsPage from './pages/shared/NotificationsPage';
+import ProjectStandups from './pages/shared/ProjectStandups';
+import ProjectStandupsPage from './pages/shared/ProjectStandupsPage';
 import MyProjects from './pages/shared/MyProjects';
+import ProjectDetailPage from './pages/shared/ProjectDetailPage';
 
 // Field Officer
 import FieldOfficerDashboard from './pages/field-officer/FieldOfficerDashboard';
@@ -72,14 +77,15 @@ import AgentCommissionReports from './pages/agent/AgentCommissionReports';
 // Unassigned
 import UnassignedDashboard from './pages/unassigned/UnassignedDashboard';
 
-import { roleMenuConfig } from './utils/roleConfig';
+import { roleMenuConfig, resolveRoleKey } from './utils/roleConfig';
 
 // Role-based dashboard component — redirects to the first visible sidebar tab
 function RoleDashboard() {
   const { role } = useAuth();
+  const resolvedRole = resolveRoleKey(role);
 
   // Get the menu items for this role
-  const menuItems = roleMenuConfig[role] || roleMenuConfig.unassigned;
+  const menuItems = roleMenuConfig[resolvedRole] || roleMenuConfig.unassigned;
 
   // If the first menu item path is not /dashboard, redirect there
   if (menuItems.length > 0 && menuItems[0].path !== '/dashboard') {
@@ -87,12 +93,21 @@ function RoleDashboard() {
   }
 
   // For roles whose first item IS /dashboard, render the appropriate content
-  // md_gm has no sidebar tabs but should land on project-approval
-  if (role === 'md_gm') {
-    return <Navigate to="/dashboard/project-approval" replace />;
-  }
-
-  switch (role) {
+  switch (resolvedRole) {
+    case 'admin':
+      return <AdminDashboard />;
+    case 'hr_head':
+      return <HRDashboard />;
+    case 'coordinator':
+      return <CoordinatorDashboard />;
+    case 'accessor':
+      return <AccessorDashboard />;
+    case 'senior_valuer':
+      return <SeniorValuerDashboard />;
+    case 'md_gm':
+      return <MDGMDashboard />;
+    case 'field_officer':
+      return <FieldOfficerDashboard />;
     case 'general_employee':
       return <MyAttendance />;
     case 'client':
@@ -133,21 +148,29 @@ export default function App() {
         <Route path="client-submissions" element={<ProtectedRoute allowedRoles={['admin']}><ClientSubmissions /></ProtectedRoute>} />
         <Route path="employee-submissions" element={<ProtectedRoute allowedRoles={['admin']}><EmployeeSubmissions /></ProtectedRoute>} />
         <Route path="cancellation-requests" element={<ProtectedRoute allowedRoles={['admin']}><CancellationRequests /></ProtectedRoute>} />
+        <Route path="direct-project-approvals" element={<ProtectedRoute allowedRoles={['admin']}><DirectProjectApprovals /></ProtectedRoute>} />
 
         {/* HR Head routes */}
         <Route path="attendance-summary" element={<ProtectedRoute allowedRoles={['hr_head']}><AttendanceSummary /></ProtectedRoute>} />
         <Route path="leave-management" element={<ProtectedRoute allowedRoles={['hr_head']}><LeaveManagement /></ProtectedRoute>} />
         <Route path="payments" element={<ProtectedRoute allowedRoles={['hr_head']}><PaymentManagement /></ProtectedRoute>} />
-        <Route path="leave-requests" element={<ProtectedRoute allowedRoles={['hr_head']}><LeaveRequests /></ProtectedRoute>} />
-        <Route path="attendance-view" element={<ProtectedRoute allowedRoles={['hr_head']}><AttendanceView /></ProtectedRoute>} />
-        <Route path="request-removal" element={<ProtectedRoute allowedRoles={['hr_head']}><RemovalRequest /></ProtectedRoute>} />
+        <Route
+          path="leave-requests"
+          element={<ProtectedRoute allowedRoles={['hr_head']}><Navigate to="/dashboard/leave-management" replace /></ProtectedRoute>}
+        />
+        <Route
+          path="attendance-view"
+          element={<ProtectedRoute allowedRoles={['hr_head']}><Navigate to="/dashboard/attendance-summary" replace /></ProtectedRoute>}
+        />
+        <Route path="request-removal" element={<ProtectedRoute allowedRoles={['admin', 'hr_head']}><RemovalRequest /></ProtectedRoute>} />
 
         {/* Coordinator routes */}
         <Route path="assigned-submissions" element={<ProtectedRoute allowedRoles={['coordinator']}><AssignedSubmissions /></ProtectedRoute>} />
         <Route path="projects" element={<ProtectedRoute allowedRoles={['admin', 'coordinator']}><ProjectList /></ProtectedRoute>} />
         <Route path="projects/create" element={<ProtectedRoute allowedRoles={['coordinator']}><CreateProject /></ProtectedRoute>} />
         <Route path="projects/:id/edit" element={<ProtectedRoute allowedRoles={['coordinator']}><EditProject /></ProtectedRoute>} />
-        <Route path="projects/:id" element={<ProjectDetail />} />
+        <Route path="projects/:id" element={<ProjectDetailPage />} />
+        <Route path="projects/:projectId/standups" element={<ProtectedRoute allowedRoles={['admin', 'coordinator', 'field_officer', 'accessor', 'senior_valuer', 'md_gm']}><ProjectStandupsPage /></ProtectedRoute>} />
 
         {/* Accessor routes */}
         <Route path="my-projects" element={<AccessorProjects />} />
@@ -167,11 +190,17 @@ export default function App() {
         <Route path="agent-payments" element={<ProtectedRoute allowedRoles={['agent']}><AgentPayments /></ProtectedRoute>} />
         <Route path="agent-commission-reports" element={<ProtectedRoute allowedRoles={['agent']}><AgentCommissionReports /></ProtectedRoute>} />
 
+        {/* Admin new routes */}
+        <Route path="invitations" element={<ProtectedRoute allowedRoles={['admin']}><InvitationTracking /></ProtectedRoute>} />
+        <Route path="all-project-items" element={<ProtectedRoute allowedRoles={['admin', 'md_gm']}><AllProjectItems /></ProtectedRoute>} />
+
         {/* Shared routes - accessible by all authenticated users */}
         <Route path="my-attendance" element={<MyAttendance />} />
         <Route path="my-leave" element={<MyLeaveRequests />} />
         <Route path="my-payments" element={<MyPaymentSlips />} />
-        <Route path="profile" element={<PersonalInfo />} />
+        <Route path="personal-info" element={<PersonalInfo />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="change-password" element={<ChangePassword />} />
         <Route path="force-change-password" element={<ForceChangePassword />} />
       </Route>
