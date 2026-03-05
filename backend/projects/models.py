@@ -14,6 +14,7 @@ class Project(models.Model):
     ]
     
     PRIORITY_CHOICES = [
+        ('urgent', 'Urgent'),
         ('high', 'High'),
         ('medium', 'Medium'),
         ('low', 'Low'),
@@ -98,7 +99,37 @@ class Project(models.Model):
     )
     md_gm_approved_at = models.DateTimeField(null=True, blank=True)
     md_gm_rejected_at = models.DateTimeField(null=True, blank=True)
-    
+
+    # Admin approval fields (for projects created without a submission)
+    ADMIN_APPROVAL_CHOICES = [
+        ('not_required', 'Not Required'),
+        ('not_submitted', 'Not Submitted'),
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    admin_approval_status = models.CharField(
+        max_length=20,
+        choices=ADMIN_APPROVAL_CHOICES,
+        default='not_required',
+        help_text='Admin approval status for direct projects (created without a submission)'
+    )
+    admin_rejection_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Reason for rejection by admin (if rejected)'
+    )
+    admin_approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='admin_approved_projects',
+        help_text='Admin who approved/rejected this project'
+    )
+    admin_approved_at = models.DateTimeField(null=True, blank=True)
+    admin_rejected_at = models.DateTimeField(null=True, blank=True)
+
     # Payment related fields
     estimated_value = models.DecimalField(
         max_digits=12,
@@ -147,7 +178,13 @@ class ProjectDocument(models.Model):
         null=True,
         blank=True,
         related_name='assigned_documents',
-        help_text='The assigned user this document is intended for'
+        help_text='The assigned user this document is intended for (legacy; use visible_to for ACL)'
+    )
+    visible_to = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name='visible_documents',
+        help_text='Users who can see this document (empty = all project assignees + coordinator)',
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
     
@@ -280,6 +317,45 @@ class ProjectPayment(models.Model):
         blank=True,
         null=True,
         help_text='Payment instructions sent to the client'
+    )
+
+    # Gateway payment tracking
+    payment_method = models.CharField(
+        max_length=20,
+        choices=[
+            ('bank_slip', 'Bank Slip'),
+            ('payhere', 'PayHere'),
+        ],
+        default='bank_slip',
+        help_text='How the client completed or intends to complete the payment'
+    )
+    gateway_order_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='Gateway order reference used for PayHere checkout'
+    )
+    gateway_payment_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='Gateway transaction reference returned by PayHere'
+    )
+    gateway_status = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text='Latest gateway status such as initiated, paid, cancelled, or failed'
+    )
+    gateway_payment_data = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='Raw PayHere callback or initiation payload for auditing'
+    )
+    gateway_paid_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Timestamp when the gateway payment was confirmed'
     )
 
     # Agent payment fields
@@ -432,3 +508,31 @@ class CommissionReport(models.Model):
 
     def __str__(self):
         return f"{self.project.title} - Commission Report - Rs. {self.commission_amount}"
+
+
+class ProjectVisit(models.Model):
+    """Field officer schedules a site visit for a project (Feature #2)."""
+
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('rescheduled', 'Rescheduled'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='visits')
+    field_officer = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='scheduled_visits'
+    )
+    scheduled_date = models.DateField()
+    note = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'project_visits'
+        ordering = ['-scheduled_date']
+
+    def __str__(self):
+        return f"Visit for {self.project.title} on {self.scheduled_date}"

@@ -7,6 +7,7 @@ import { Search, Folder, AttachFile } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
+import TabFilters from '../../components/TabFilters';
 import { formatDate, getPriorityColor, capitalize } from '../../utils/helpers';
 
 const STATUS_TAB_MAP = { pending: 1, in_progress: 2, completed: 3 };
@@ -49,16 +50,21 @@ export default function MyProjects() {
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>My Projects</Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label={`All (${projects.length})`} />
-        <Tab label={`Pending (${projects.filter(p => p.status === 'pending').length})`} />
-        <Tab label={`In Progress (${projects.filter(p => p.status === 'in_progress').length})`} />
-        <Tab label={`Completed (${projects.filter(p => p.status === 'completed').length})`} />
-      </Tabs>
-
-      <TextField fullWidth placeholder="Search projects..." value={search} onChange={(e) => setSearch(e.target.value)}
-        InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }}
-        sx={{ mb: 3 }} size="small" />
+      <TabFilters
+        tab={tab}
+        onTabChange={setTab}
+        tabs={[
+          { key: 'all', value: 0, label: 'All', count: projects.length, colorKey: 'all' },
+          { key: 'pending', value: 1, label: 'Pending', count: projects.filter(p => p.status === 'pending').length, colorKey: 'pending' },
+          { key: 'in_progress', value: 2, label: 'In Progress', count: projects.filter(p => p.status === 'in_progress').length, colorKey: 'accepted' },
+          { key: 'completed', value: 3, label: 'Completed', count: projects.filter(p => p.status === 'completed').length, colorKey: 'accepted' },
+        ]}
+        tabsSx={{ mb: 2 }}
+        search={search}
+        onSearchChange={setSearch}
+        searchSx={{ mb: 3 }}
+        searchSize="small"
+      />
 
       {filtered.length === 0 ? (
         <Card><CardContent><Typography color="text.secondary" align="center">No projects found</Typography></CardContent></Card>
@@ -70,7 +76,7 @@ export default function MyProjects() {
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Folder color="primary" />
-                    <Chip label={capitalize(p.priority)} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 11, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(p.priority)}50` }} />
+                    <Chip label={capitalize(p.priority)} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 11, width: 110, justifyContent: 'center', border: `1px solid ${getPriorityColor(p.priority)}50` }} />
                   </Box>
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>{p.title}</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

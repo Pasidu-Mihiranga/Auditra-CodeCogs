@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box, Typography, Tabs, Tab, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, Button, TextField, InputAdornment, Alert, Chip,
-  Tooltip,
+  Box, Typography, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Paper, Button, Alert, Chip,
 } from '@mui/material';
-import { Search, Add, Visibility } from '@mui/icons-material';
-import projectService from '../../services/projectService';
+import { Add, Visibility } from '@mui/icons-material';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
-import { formatDate, getPriorityColor, capitalize } from '../../utils/helpers';
+import PriorityChip from '../../components/PriorityChip';
+import TabFilters from '../../components/TabFilters';
 import { useAuth } from '../../contexts/AuthContext';
+import useCoordinatorProjects from '../../hooks/useCoordinatorProjects';
 
 const STATUS_TAB_MAP = { pending: 1, in_progress: 2, completed: 3 };
 
@@ -23,30 +23,21 @@ const PAYMENT_STATUS_CONFIG = {
   rejected: { label: 'Payment Rejected', color: '#DC2626', bg: '#DC262620' },
 };
 
+const ADMIN_APPROVAL_CONFIG = {
+  not_submitted: { label: 'Not Submitted', color: '#757575', bg: '#75757520' },
+  pending: { label: 'Pending', color: '#ED6C02', bg: '#ED6C0220' },
+  approved: { label: 'Approved', color: '#1565C0', bg: '#1565C020' },
+  rejected: { label: 'Rejected', color: '#D32F2F', bg: '#D32F2F20' },
+};
+
 export default function ProjectList() {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { projects, loading, error } = useCoordinatorProjects();
   const location = useLocation();
   const initialTab = STATUS_TAB_MAP[location.state?.filter] || 0;
   const [tab, setTab] = useState(initialTab);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
   const { role } = useAuth();
-
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await projectService.getProjects();
-        setProjects(Array.isArray(res.data) ? res.data : res.data?.results || []);
-      } catch {
-        setError('Failed to load projects');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProjects();
-  }, []);
 
   const statuses = ['', 'pending', 'in_progress', 'completed'];
   const filtered = projects
@@ -67,34 +58,37 @@ export default function ProjectList() {
       </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label={`All (${projects.length})`} />
-        <Tab label={`Pending (${projects.filter(p => p.status === 'pending').length})`} />
-        <Tab label={`In Progress (${projects.filter(p => p.status === 'in_progress').length})`} />
-        <Tab label={`Completed (${projects.filter(p => p.status === 'completed').length})`} />
-      </Tabs>
-
-      <TextField fullWidth placeholder="Search projects..." value={search} onChange={(e) => setSearch(e.target.value)}
-        InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }}
-        sx={{ mb: 2 }} size="small" />
+      <TabFilters
+        tab={tab}
+        onTabChange={setTab}
+        tabs={[
+          { key: 'all', value: 0, label: 'All', count: projects.length, colorKey: 'all' },
+          { key: 'pending', value: 1, label: 'Pending', count: projects.filter(p => p.status === 'pending').length, colorKey: 'pending' },
+          { key: 'in_progress', value: 2, label: 'In Progress', count: projects.filter(p => p.status === 'in_progress').length, colorKey: 'accepted' },
+          { key: 'completed', value: 3, label: 'Completed', count: projects.filter(p => p.status === 'completed').length, colorKey: 'accepted' },
+        ]}
+        tabsSx={{ mb: 2 }}
+        search={search}
+        onSearchChange={setSearch}
+        searchSx={{ mb: 2 }}
+        searchSize="small"
+      />
 
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Title</TableCell>
-              <TableCell>Priority</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Payment Status</TableCell>
-              <TableCell>Est. Value</TableCell>
-              <TableCell>Start</TableCell>
-              <TableCell>End</TableCell>
-              <TableCell>Actions</TableCell>
+              <TableCell sx={{ textAlign: 'left' }}>Title</TableCell>
+              <TableCell sx={{ textAlign: 'center' }}>Priority</TableCell>
+              <TableCell sx={{ textAlign: 'center' }}>Status</TableCell>
+              <TableCell sx={{ textAlign: 'center' }}>Payment Status</TableCell>
+              <TableCell sx={{ textAlign: 'center' }}>Admin Approval</TableCell>
+              <TableCell sx={{ textAlign: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={8} align="center">No projects found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} align="center">No projects found</TableCell></TableRow>
             ) : (
               filtered.map((p) => {
                 const paymentStatus = p.payment?.payment_status || 'pending';
@@ -102,12 +96,12 @@ export default function ProjectList() {
                 
                 return (
                   <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/dashboard/projects/${p.id}`)}>
-                    <TableCell sx={{ fontWeight: 600 }}>{p.title}</TableCell>
-                    <TableCell>
-                      <Chip label={capitalize(p.priority)} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 12, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(p.priority)}50` }} />
+                    <TableCell sx={{ fontWeight: 600, textAlign: 'left' }}>{p.title}</TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      <PriorityChip priority={p.priority} />
                     </TableCell>
-                    <TableCell><StatusChip status={p.status} label={p.status_display || p.status} /></TableCell>
-                    <TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}><StatusChip status={p.status} label={p.status_display || p.status} /></TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}>
                       <Chip
                         label={paymentConfig.label}
                         size="small"
@@ -122,12 +116,29 @@ export default function ProjectList() {
                         }}
                       />
                     </TableCell>
-                    <TableCell>
-                      {p.estimated_value ? `Rs. ${Number(p.estimated_value).toLocaleString()}` : '-'}
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      {p.admin_approval_status && p.admin_approval_status !== 'not_required' ? (() => {
+                        const config = ADMIN_APPROVAL_CONFIG[p.admin_approval_status] || ADMIN_APPROVAL_CONFIG.pending;
+                        return (
+                          <Chip
+                            label={config.label}
+                            size="small"
+                            sx={{
+                              bgcolor: config.bg,
+                              color: config.color,
+                              fontWeight: 600,
+                              fontSize: 12,
+                              width: 110,
+                              justifyContent: 'center',
+                              border: `1px solid ${config.color}50`,
+                            }}
+                          />
+                        );
+                      })() : (
+                        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>-</Typography>
+                      )}
                     </TableCell>
-                    <TableCell>{formatDate(p.start_date)}</TableCell>
-                    <TableCell>{formatDate(p.end_date)}</TableCell>
-                    <TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}>
                       <Button size="small" startIcon={<Visibility />} onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/projects/${p.id}`); }}>
                         View
                       </Button>

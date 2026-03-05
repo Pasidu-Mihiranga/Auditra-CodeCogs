@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, Button, Alert, Tabs, Tab, Dialog,
+  TableHead, TableRow, Paper, Button, Alert, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField, IconButton,
   Collapse, Grid, Chip
 } from '@mui/material';
@@ -11,6 +11,7 @@ import {
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
+import TabFilters from '../../components/TabFilters';
 import { formatDateTime } from '../../utils/helpers';
 
 /* ------------------------------------------------------------------ */
@@ -141,12 +142,17 @@ export default function CancellationRequests() {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label={`All (${allRequests.length})`} />
-        <Tab label={`Pending (${pendingCount})`} />
-        <Tab label={`Approved (${approvedCount})`} />
-        <Tab label={`Rejected (${rejectedCount})`} />
-      </Tabs>
+      <TabFilters
+        tab={tab}
+        onTabChange={setTab}
+        tabs={[
+          { key: 0, value: 0, label: 'All', count: allRequests.length, colorKey: 'all' },
+          { key: 1, value: 1, label: 'Pending', count: pendingCount, colorKey: 'pending' },
+          { key: 2, value: 2, label: 'Approved', count: approvedCount, colorKey: 'accepted' },
+          { key: 3, value: 3, label: 'Rejected', count: rejectedCount, colorKey: 'rejected' },
+        ]}
+        tabsSx={{ mb: 2 }}
+      />
 
       <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
         <Table size="small">
@@ -194,11 +200,11 @@ export default function CancellationRequests() {
                           <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                             <Button
                               size="small"
-                              variant="contained"
+                              variant="outlined"
                               color="primary"
                               startIcon={<Check />}
                               onClick={() => { setAdminRemarks(''); setApproveDialog(request); }}
-                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
+                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', width: 110 }}
                             >
                               Approve
                             </Button>
@@ -208,7 +214,7 @@ export default function CancellationRequests() {
                               color="error"
                               startIcon={<Close />}
                               onClick={() => { setAdminRemarks(''); setRejectDialog(request); }}
-                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
+                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', width: 110 }}
                             >
                               Reject
                             </Button>
@@ -382,7 +388,7 @@ export default function CancellationRequests() {
         )}
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setApproveDialog(null)} disabled={processing} sx={{ width: 110 }}>Cancel</Button>
-          <Button variant="contained" color="primary" onClick={handleApprove} disabled={processing} startIcon={<Check />} sx={{ width: 110 }}>
+          <Button variant="outlined" color="primary" onClick={handleApprove} disabled={processing} startIcon={<Check />} sx={{ width: 110 }}>
             {processing ? 'Processing...' : 'Approve'}
           </Button>
         </DialogActions>
@@ -414,7 +420,7 @@ export default function CancellationRequests() {
         )}
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setRejectDialog(null)} disabled={processing} sx={{ width: 110 }}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={handleReject} disabled={processing || !adminRemarks.trim()} startIcon={<Close />} sx={{ width: 110 }}>
+          <Button variant="outlined" color="error" onClick={handleReject} disabled={processing || !adminRemarks.trim()} startIcon={<Close />} sx={{ width: 110 }}>
             {processing ? 'Processing...' : 'Reject'}
           </Button>
         </DialogActions>

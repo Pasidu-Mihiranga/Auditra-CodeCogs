@@ -7,28 +7,42 @@ class FieldOfficerProjectCard extends StatelessWidget {
   final Project project;
   final Function(Project) onViewDetails;
   final Function(Project) onViewReports;
+  final Function(Project) onCreateReport;
   final Function(Project) onSubmit;
+  final void Function(Project)? onScheduleVisit;
 
   const FieldOfficerProjectCard({
     super.key,
     required this.project,
     required this.onViewDetails,
     required this.onViewReports,
+    required this.onCreateReport,
     required this.onSubmit,
+    this.onScheduleVisit,
   });
+
+  static String _formatNextVisitLine(String? iso) {
+    if (iso == null || iso.isEmpty) return 'Not set';
+    try {
+      return DateFormat('MMM d').format(DateTime.parse(iso));
+    } catch (_) {
+      return iso;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final priority = project.priority ?? 'medium';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0D47A1).withOpacity(0.08),
+            color: Colors.black.withOpacity(isDark ? 0.28 : 0.08),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -102,7 +116,7 @@ class FieldOfficerProjectCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF5F7FA),
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF5F7FA),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -126,10 +140,10 @@ class FieldOfficerProjectCard extends StatelessWidget {
                                   ),
                                   Text(
                                     project.coordinatorName ?? project.coordinatorUsername,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF333333),
+                                      color: isDark ? Colors.white : const Color(0xFF333333),
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -142,15 +156,28 @@ class FieldOfficerProjectCard extends StatelessWidget {
                       ),
                       Container(width: 1, height: 24, color: Colors.grey[300]),
                       const SizedBox(width: 12),
-                      Row(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Icon(Icons.calendar_today_rounded, size: 14, color: Colors.grey[500]),
-                          const SizedBox(width: 4),
                           Text(
-                            project.startDate != null 
-                              ? DateFormat('MMM dd').format(project.startDate!)
-                              : 'N/A',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
+                            'Valuation visit',
+                            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.event_available, size: 14, color: Colors.grey[500]),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatNextVisitLine(project.nextScheduledVisit),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? Colors.grey[200] : Colors.grey[800],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -169,8 +196,8 @@ class FieldOfficerProjectCard extends StatelessWidget {
                         icon: Icons.info_outline_rounded,
                         label: 'Details',
                         color: Colors.grey[800]!,
-                        backgroundColor: Colors.white,
-                        borderColor: Colors.grey[300]!,
+                        backgroundColor: Theme.of(context).cardColor,
+                        borderColor: isDark ? const Color(0xFF334155) : Colors.grey[300]!,
                         onTap: () => onViewDetails(project),
                       ),
                     ),
@@ -188,6 +215,51 @@ class FieldOfficerProjectCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (onScheduleVisit != null) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => onScheduleVisit!(project),
+                      icon: const Icon(Icons.event_note_outlined, size: 18),
+                      label: const Text('Set valuation date'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF0D47A1),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFF1976D2)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (project.status == 'in_progress') ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => onCreateReport(project),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF0D47A1),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Color(0xFF0D47A1)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.note_add_outlined, size: 18),
+                      label: const Text(
+                        'Create Report',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -339,7 +411,7 @@ class FieldOfficerProjectCard extends StatelessWidget {
     }
 
     return Container(
-      width: 90,
+      constraints: const BoxConstraints(maxWidth: 90),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
@@ -352,13 +424,16 @@ class FieldOfficerProjectCard extends StatelessWidget {
         children: [
           Icon(Icons.flag_rounded, size: 14, color: color),
           const SizedBox(width: 4),
-          Text(
-            priority.toUpperCase(),
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+          Flexible(
+            child: Text(
+              priority.toUpperCase(),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
         ],

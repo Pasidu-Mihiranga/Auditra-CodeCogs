@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../models/project_model.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../widgets/shared_dashboard_widgets.dart';
+import '../../visit_scheduling_screen.dart';
 import '../utils/field_officer_document_manager.dart';
 
 class ProjectDetailsScreen extends StatefulWidget {
@@ -39,14 +40,15 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
     required String value,
     required Color color,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(isDark ? 0.28 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -68,17 +70,17 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey[600],
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: isDark ? Colors.white : Colors.black87,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -91,9 +93,10 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final project = widget.project;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -182,21 +185,21 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                       'Description',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.black87,
+                            color: isDark ? Colors.white : Colors.black87,
                           ),
                     ),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade200),
+                        border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
                       ),
                       child: Text(
                         project.description!,
                         style: TextStyle(
-                          color: Colors.grey[700],
+                          color: isDark ? Colors.grey[300] : Colors.grey[700],
                           fontSize: 15,
                           height: 1.5,
                         ),
@@ -209,7 +212,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                     'Details',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
                   ),
                   const SizedBox(height: 12),
@@ -232,7 +235,41 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                       color: Colors.blue,
                     )),
                   ]),
-
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => VisitSchedulingScreen(
+                              projectId: project.id,
+                              projectTitle: project.title,
+                              appBarTitle:
+                                  'Valuation schedule – ${project.title}',
+                              fabLabel: 'Set valuation date',
+                              emptyStateText:
+                                  'No valuation date scheduled. Tap the button to choose when you will visit the site.',
+                              confirmDialogTitle: 'Confirm valuation date',
+                              confirmDialogScheduleLabel: 'Set date',
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.event_available_outlined,
+                          color: AppColors.primary),
+                      label: const Text('Schedule valuation (site visit)'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF0D47A1),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Color(0xFF0D47A1)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   // Documents Section
                   if (project.documents.isNotEmpty) ...[
                     const SizedBox(height: 24),

@@ -1,6 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'network_service.dart';
+import 'offline_db_service.dart';
+import 'offline_storage_service.dart';
 
 class ApiService {
   // Change this to your computer's IP address when testing on physical device
@@ -159,8 +164,16 @@ class ApiService {
         await prefs.setString('refresh_token', data['refresh']);
         await prefs.setString('user_id', data['user']['id'].toString());
         await prefs.setString('username', data['user']['username']);
-        
-        return {'success': true, 'data': data};
+        await prefs.setBool('password_change_required', data['password_change_required'] == true);
+        if (data['theme_preference'] != null) {
+          await prefs.setString('theme_preference', data['theme_preference']);
+        }
+
+        return {
+          'success': true,
+          'data': data,
+          'password_change_required': data['password_change_required'] == true,
+        };
       } else {
         return {'success': false, 'message': data['error'] ?? 'Login failed'};
       }
@@ -352,19 +365,39 @@ class ApiService {
   static Future<Map<String, dynamic>> getMyRole() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
+      var token = prefs.getString('access_token');
 
       if (token == null) {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
-      final response = await http.get(
+      var response = await http.get(
         Uri.parse('$baseUrl/auth/my-role/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
+
+      // If token expired, refresh and retry
+      if (response.statusCode == 401) {
+        final refreshResult = await refreshToken();
+        if (refreshResult['success'] == true) {
+          token = prefs.getString('access_token');
+          response = await http.get(
+            Uri.parse('$baseUrl/auth/my-role/'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          );
+        } else {
+          return {
+            'success': false,
+            'message': refreshResult['message'] ?? 'Session expired. Please login again.'
+          };
+        }
+      }
 
       // Check if response is HTML (error page)
       if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
@@ -812,19 +845,39 @@ class ApiService {
   static Future<Map<String, dynamic>> getProjects() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
+      var token = prefs.getString('access_token');
 
       if (token == null) {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
-      final response = await http.get(
+      var response = await http.get(
         Uri.parse('$baseUrl/projects/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
+
+      // If token expired, refresh and retry
+      if (response.statusCode == 401) {
+        final refreshResult = await refreshToken();
+        if (refreshResult['success'] == true) {
+          token = prefs.getString('access_token');
+          response = await http.get(
+            Uri.parse('$baseUrl/projects/'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          );
+        } else {
+          return {
+            'success': false,
+            'message': refreshResult['message'] ?? 'Session expired. Please login again.'
+          };
+        }
+      }
 
       // Check if response is JSON
       String contentType = response.headers['content-type'] ?? '';
@@ -854,6 +907,138 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  // Project visit scheduling (Field Officer)
+  static Future<Map<String, dynamic>> getProjectVisits(int projectId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+
+      var response = await http.get(
+        Uri.parse('$baseUrl/projects/$projectId/visits/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 401) {
+        final refreshResult = await refreshToken();
+        if (refreshResult['success'] == true) {
+          token = prefs.getString('access_token');
+          response = await http.get(
+            Uri.parse('$baseUrl/projects/$projectId/visits/'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          );
+        } else {
+          return {
+            'success': false,
+            'message': refreshResult['message'] ?? 'Session expired. Please login again.',
+          };
+        }
+      }
+
+      final dynamic data = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+      if (response.statusCode == 200) {
+        final visits = data is List ? data : (data is Map<String, dynamic> ? (data['results'] ?? <dynamic>[]) : <dynamic>[]);
+        return {'success': true, 'data': visits};
+      }
+      final message = data is Map<String, dynamic>
+          ? (data['detail'] ?? data['error'] ?? data['message'] ?? 'Failed to load valuation dates')
+          : 'Failed to load valuation dates';
+      return {'success': false, 'message': message.toString()};
+    } catch (e) {
+      final errorText = e.toString();
+      final isNetworkError =
+          e is SocketException ||
+          errorText.contains('ClientException') ||
+          errorText.contains('Connection failed') ||
+          errorText.contains('Connection refused') ||
+          errorText.contains('Failed host lookup') ||
+          errorText.contains('Network is unreachable') ||
+          errorText.contains('timed out');
+      if (isNetworkError) {
+        return {
+          'success': false,
+          'message': 'You are offline. Connect to the internet to load valuation dates.',
+        };
+      }
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> scheduleProjectVisit({
+    required int projectId,
+    required DateTime scheduledDate,
+    String? notes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+
+      var response = await http.post(
+        Uri.parse('$baseUrl/projects/$projectId/visits/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'scheduled_date': DateFormat('yyyy-MM-dd').format(scheduledDate),
+          if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        }),
+      );
+
+      if (response.statusCode == 401) {
+        final refreshResult = await refreshToken();
+        if (refreshResult['success'] == true) {
+          token = prefs.getString('access_token');
+          response = await http.post(
+            Uri.parse('$baseUrl/projects/$projectId/visits/'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'scheduled_date': DateFormat('yyyy-MM-dd').format(scheduledDate),
+              if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+            }),
+          );
+        } else {
+          return {
+            'success': false,
+            'message': refreshResult['message'] ?? 'Session expired. Please login again.',
+          };
+        }
+      }
+
+      final dynamic data = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      }
+
+      String message = 'Failed to set valuation date';
+      if (data is Map<String, dynamic>) {
+        final detail = data['detail'] ?? data['error'] ?? data['message'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          message = detail;
+        } else {
+          // DRF validation error map
+          final firstValue = data.values.isNotEmpty ? data.values.first : null;
+          if (firstValue is List && firstValue.isNotEmpty) {
+            message = firstValue.first.toString();
+          }
+        }
+      }
+      return {'success': false, 'message': message};
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
     }
   }
 
@@ -1613,14 +1798,36 @@ class ApiService {
       }
 
       final response = await http.post(
-        Uri.parse('$baseUrl/projects/$projectId/submit/'),
+        Uri.parse('$baseUrl/projects/$projectId/start-project/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      final data = jsonDecode(response.body);
+      // Guard against Django HTML error pages (404/500) to avoid FormatException
+      final body = response.body.trim();
+      if (body.startsWith('<!DOCTYPE') || body.startsWith('<html')) {
+        return {
+          'success': false,
+          'message': 'Server returned HTML. Submit endpoint may be missing or backend has an error.',
+        };
+      }
+
+      Map<String, dynamic> data = {};
+      if (body.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map<String, dynamic>) {
+            data = decoded;
+          }
+        } catch (_) {
+          return {
+            'success': false,
+            'message': 'Invalid response from server while submitting project.',
+          };
+        }
+      }
 
       if (response.statusCode == 200) {
         return {'success': true, 'data': data};
@@ -1698,6 +1905,25 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createValuation(Map<String, dynamic> valuationData) async {
     try {
+      // Field officers can work fully offline: queue valuation locally when
+      // there is no real network/backend connectivity.
+      final offlineModeEnabled = await OfflineDBService.isOfflineModeEnabled();
+      if (offlineModeEnabled) {
+        if (!NetworkService.isInitialized) {
+          await NetworkService.init();
+        }
+        final isOnline = await NetworkService.checkConnectivity();
+        if (!isOnline) {
+          final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+          return {
+            'success': true,
+            'synced': false,
+            'data': {'localId': localId, ...valuationData},
+            'message': 'Saved offline. Will sync automatically when online.',
+          };
+        }
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
 
@@ -1724,7 +1950,7 @@ class ApiService {
       }
 
       if (response.statusCode == 201) {
-        return {'success': true, 'data': data};
+        return {'success': true, 'data': data, 'synced': true};
       } else {
         // Try to extract detailed error messages
         String errorMessage = 'Failed to create valuation';
@@ -1777,6 +2003,32 @@ class ApiService {
         return {'success': false, 'message': errorMessage};
       }
     } catch (e) {
+      // Network failures in offline mode should queue locally instead of showing
+      // a blocking connection error to field officers.
+      final errorText = e.toString();
+      final isNetworkFailure =
+          e is SocketException ||
+          errorText.contains('ClientException') ||
+          errorText.contains('Connection failed') ||
+          errorText.contains('Connection refused') ||
+          errorText.contains('Failed host lookup') ||
+          errorText.contains('Network is unreachable') ||
+          errorText.contains('timed out');
+
+      if (isNetworkFailure && await OfflineDBService.isOfflineModeEnabled()) {
+        try {
+          final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+          return {
+            'success': true,
+            'synced': false,
+            'data': {'localId': localId, ...valuationData},
+            'message': 'Saved offline. Will sync automatically when online.',
+          };
+        } catch (_) {
+          // Fall through to the original connection error if offline queue fails.
+        }
+      }
+
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
@@ -1970,7 +2222,17 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> uploadValuationPhoto(int valuationId, String photoPath, {String? caption}) async {
+  static Future<Map<String, dynamic>> uploadValuationPhoto(
+    int valuationId,
+    String photoPath, {
+    String? caption,
+    bool isPrimary = false,
+    int? ordering,
+    String? capturedAt,
+    double? gpsLat,
+    double? gpsLon,
+    String? deviceId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -1989,6 +2251,12 @@ class ApiService {
       if (caption != null && caption.isNotEmpty) {
         request.fields['caption'] = caption;
       }
+      if (isPrimary) request.fields['is_primary'] = 'true';
+      if (ordering != null) request.fields['ordering'] = ordering.toString();
+      if (capturedAt != null && capturedAt.isNotEmpty) request.fields['captured_at'] = capturedAt;
+      if (gpsLat != null) request.fields['gps_lat'] = gpsLat.toStringAsFixed(6);
+      if (gpsLon != null) request.fields['gps_lon'] = gpsLon.toStringAsFixed(6);
+      if (deviceId != null && deviceId.isNotEmpty) request.fields['device_id'] = deviceId;
 
       final file = await http.MultipartFile.fromPath('photo', photoPath);
       request.files.add(file);
@@ -2004,6 +2272,54 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  /// Feature #9: Reorder valuation photos. Takes an ordered list of photo IDs.
+  static Future<Map<String, dynamic>> reorderValuationPhotos(
+    int valuationId,
+    List<int> orderedPhotoIds,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.patch(
+        Uri.parse('$baseUrl/valuations/$valuationId/photos/reorder/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'photo_ids': orderedPhotoIds}),
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Feature #9: Mark a photo as the primary photo for a valuation.
+  static Future<Map<String, dynamic>> setPrimaryValuationPhoto(int valuationId, int photoId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/photos/$photoId/set-primary/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
     }
   }
 
@@ -3043,6 +3359,272 @@ class ApiService {
         errorMsg = 'Connection error: ${e.toString()}';
       }
       return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // ---- Notifications ----
+
+  static Future<Map<String, dynamic>> getNotifications({int page = 1}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.get(
+        Uri.parse('$baseUrl/notifications/?page=$page'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': 'Failed to load notifications (${response.statusCode})'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<void> markNotificationRead(int id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return;
+      await http.post(
+        Uri.parse('$baseUrl/notifications/$id/read/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+    } catch (_) {}
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return;
+      await http.post(
+        Uri.parse('$baseUrl/notifications/mark-all-read/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+    } catch (_) {}
+  }
+
+  // ---- User Profile ----
+
+  static Future<Map<String, dynamic>> getUserProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/profile/me/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.patch(
+        Uri.parse('$baseUrl/auth/profile/me/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(profileData),
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Update failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Feature #16: Upload a profile avatar (multipart).
+  static Future<Map<String, dynamic>> uploadUserAvatar(File imageFile) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/auth/profile/me/avatar/'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+      request.files.add(await http.MultipartFile.fromPath('avatar', imageFile.path));
+      final streamed = await request.send();
+      final body = await streamed.stream.bytesToString();
+      if (streamed.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(body)};
+      }
+      return {'success': false, 'message': 'Upload failed (${streamed.statusCode}) $body'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ---- Daily Standups (Feature #1) ----
+
+  static Future<Map<String, dynamic>> getStandupMessages(int projectId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.get(
+        Uri.parse('$baseUrl/standups/projects/$projectId/messages/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> postStandupMessage(
+    int projectId,
+    String body, {
+    String kind = 'free',
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.post(
+        Uri.parse('$baseUrl/standups/projects/$projectId/messages/post/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'body': body, 'kind': kind}),
+      );
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getStandupMembers(int projectId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.get(
+        Uri.parse('$baseUrl/standups/projects/$projectId/members/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ---- Consolidated Report Items (Feature #13 — D1) ----
+
+  static Future<Map<String, dynamic>> getReportItems(int projectId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.get(
+        Uri.parse('$baseUrl/projects/$projectId/report-items/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> createReportItem(
+    int projectId,
+    Map<String, dynamic> data, {
+    bool overrideDuplicate = false,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final body = {...data, 'project': projectId, 'override_duplicate': overrideDuplicate};
+      final response = await http.post(
+        Uri.parse('$baseUrl/projects/$projectId/report-items/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      final err = jsonDecode(response.body);
+      if (err is Map && err['duplicate'] == true) {
+        return {'success': false, 'duplicate': true, 'existing_id': err['existing_id'], 'message': err['message'] ?? 'Duplicate item'};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateReportItem(int itemId, Map<String, dynamic> data) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.patch(
+        Uri.parse('$baseUrl/report-items/$itemId/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(data),
+      );
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteReportItem(int itemId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+      final response = await http.delete(
+        Uri.parse('$baseUrl/report-items/$itemId/'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 204 || response.statusCode == 200) {
+        return {'success': true};
+      }
+      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
     }
   }
 }

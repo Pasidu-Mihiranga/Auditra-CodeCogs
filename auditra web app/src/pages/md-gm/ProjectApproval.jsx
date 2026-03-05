@@ -1,18 +1,21 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Chip, TextField, InputAdornment, CircularProgress,
   Alert, Snackbar, Button, Dialog, DialogTitle, DialogContent,
-  DialogActions, Tabs, Tab, Divider
+  DialogActions, Divider
 } from '@mui/material';
 import { Search, CheckCircle, Cancel, Visibility } from '@mui/icons-material';
 import projectService from '../../services/projectService';
-import { formatDate, getStatusColor, capitalize } from '../../utils/helpers';
+import { formatDate, getStatusColor, capitalize, getPriorityColor, getPriorityBgColor } from '../../utils/helpers';
+import TabFilters from '../../components/TabFilters';
 
 const STATUS_TAB_MAP = { pending: 1, approved: 2, rejected: 3 };
 
 export default function ProjectApproval() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -23,6 +26,10 @@ export default function ProjectApproval() {
   const [remarks, setRemarks] = useState('');
 
   const statusFilters = ['all', 'pending', 'approved', 'rejected'];
+  const allCount = projects.length;
+  const pendingCount = projects.filter(p => p.status === 'pending').length;
+  const approvedCount = projects.filter(p => p.status === 'approved' || p.status === 'active').length;
+  const rejectedCount = projects.filter(p => p.status === 'rejected').length;
 
   useEffect(() => { fetchProjects(); }, []);
 
@@ -69,12 +76,17 @@ export default function ProjectApproval() {
       </Typography>
 
       <Paper sx={{ mb: 3 }}>
-        <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tab label={`All (${projects.length})`} />
-          <Tab label={`Pending (${projects.filter(p => p.status === 'pending').length})`} />
-          <Tab label={`Approved (${projects.filter(p => p.status === 'approved' || p.status === 'active').length})`} />
-          <Tab label={`Rejected (${projects.filter(p => p.status === 'rejected').length})`} />
-        </Tabs>
+        <TabFilters
+          tab={tabValue}
+          onTabChange={setTabValue}
+          tabs={[
+            { key: 0, value: 0, label: 'All', count: allCount, colorKey: 'all' },
+            { key: 1, value: 1, label: 'Pending', count: pendingCount, colorKey: 'pending' },
+            { key: 2, value: 2, label: 'Approved', count: approvedCount, colorKey: 'accepted' },
+            { key: 3, value: 3, label: 'Rejected', count: rejectedCount, colorKey: 'rejected' },
+          ]}
+          tabsSx={{ borderBottom: 1, borderColor: 'divider' }}
+        />
       </Paper>
 
       <TextField
@@ -115,8 +127,13 @@ export default function ProjectApproval() {
                   <TableCell>{project.client_name || project.client_info?.name || 'N/A'}</TableCell>
                   <TableCell>
                     <Chip label={capitalize(project.priority) || 'Normal'} size="small"
-                      color={project.priority === 'high' ? 'primary' : project.priority === 'medium' ? 'warning' : 'default'}
-                      sx={{ width: 90, justifyContent: 'center' }} />
+                      sx={{
+                        width: 110,
+                        justifyContent: 'center',
+                        bgcolor: getPriorityBgColor(project.priority),
+                        color: getPriorityColor(project.priority),
+                        fontWeight: 600,
+                      }} />
                   </TableCell>
                   <TableCell>{formatDate(project.start_date)}</TableCell>
                   <TableCell>{formatDate(project.end_date || project.due_date)}</TableCell>
@@ -124,10 +141,20 @@ export default function ProjectApproval() {
                     <Chip label={project.status} size="small" color={getStatusColor(project.status) || 'default'} sx={{ width: 110, justifyContent: 'center' }} />
                   </TableCell>
                   <TableCell align="right">
-                    <Button size="small" startIcon={<Visibility />}
-                      onClick={() => { setDetailDialog({ open: true, project }); setRemarks(''); }}>
-                      Review
-                    </Button>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        sx={{ width: 110 }}
+                        onClick={() => navigate(`/dashboard/projects/${project.id}/standups`)}
+                      >
+                        Standups
+                      </Button>
+                      <Button size="small" startIcon={<Visibility />} sx={{ width: 110 }}
+                        onClick={() => { setDetailDialog({ open: true, project }); setRemarks(''); }}>
+                        Review
+                      </Button>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))
@@ -171,7 +198,7 @@ export default function ProjectApproval() {
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Current Status</Typography>
-                <Chip label={detailDialog.project.status} size="small" color={getStatusColor(detailDialog.project.status) || 'default'} />
+                <Chip label={detailDialog.project.status} size="small" color={getStatusColor(detailDialog.project.status) || 'default'} sx={{ width: 110, justifyContent: 'center' }} />
               </Box>
 
               {detailDialog.project.status === 'pending' && (
@@ -197,13 +224,13 @@ export default function ProjectApproval() {
                 onClick={() => handleAction(detailDialog.project.id, 'rejected')}>
                 Reject
               </Button>
-              <Button color="primary" variant="contained" startIcon={<CheckCircle />} sx={{ width: 110 }}
+              <Button color="primary" variant="outlined" startIcon={<CheckCircle />} sx={{ width: 110 }}
                 onClick={() => handleAction(detailDialog.project.id, 'approved')}>
                 Approve
               </Button>
             </>
           )}
-          <Button onClick={() => setDetailDialog({ open: false, project: null })}>Close</Button>
+          <Button sx={{ width: 110 }} onClick={() => setDetailDialog({ open: false, project: null })}>Close</Button>
         </DialogActions>
       </Dialog>
 
