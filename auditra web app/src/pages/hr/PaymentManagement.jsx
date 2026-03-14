@@ -87,7 +87,7 @@ export default function PaymentManagement() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Payment Management</Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Payment Management...</Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
