@@ -894,6 +894,126 @@ def md_gm_approve_valuation(request, pk):
         )
     except Exception:
         pass
+    @api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def md_gm_reject_valuation(request, pk):
+    """MD/GM rejects a valuation (change status to rejected)"""
+    valuation = get_object_or_404(Valuation, pk=pk)
+
+    if not hasattr(request.user, 'role') or request.user.role.role != 'md_gm':
+        return Response(
+            {'error': 'Only MD/GM can reject valuations at this stage.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if valuation.status != 'approved':
+        return Response(
+            {'error': f'Only senior-valuer-approved valuations can be rejected by MD/GM. Current status: {valuation.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    rejection_reason = request.data.get('rejection_reason', '').strip()
+    if not rejection_reason:
+        return Response(
+            {'error': 'Rejection reason is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    md_gm_comments = request.data.get('md_gm_comments', '').strip()
+
+    valuation.status = 'rejected'
+    valuation.rejection_reason = rejection_reason
+    valuation.md_gm_comments = md_gm_comments
+    valuation.save(update_fields=['status', 'rejection_reason', 'md_gm_comments', 'updated_at'])
+
+    logger.info(f'Valuation {valuation.id} rejected by MD/GM {request.user.username}')
+
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) rejected by MD/GM. Reason: {rejection_reason}",
+        created_by=request.user
+    )
+
+    # Create valuation history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='rejected_by_mdgm',
+        performed_by=request.user,
+        comments=rejection_reason,
+    )
+
+    # Notify senior valuer and field officer
+    mdgm_name = request.user.get_full_name() or request.user.username
+    notification_msg = f'{valuation.get_category_display()} valuation for project "{valuation.project.title}" has been rejected by MD/GM ({mdgm_name}). Reason: {rejection_reason}'
+    meta = {'valuation_id': valuation.id, 'project_id': valuation.project.id}
+    action_url = f'/dashboard/projects/{valuation.project.id}'
+
+    if valuation.project.assigned_senior_valuer:
+        send_notification(
+            user=valuation.project.assigned_senior_valuer,
+            category='valuation', severity='warning',
+            title='Valuation Rejected by MD/GM',
+            message=notification_msg, meta=meta, action_url=action_url,
+        )
+
+    send_notification(
+        user=valuation.field_officer,
+        category='valuation', severity='error',
+        title='Valuation Rejected by MD/GM',
+        message=notification_msg, meta=meta, action_url=action_url,
+    )
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_MD_REJECTED',
+            user=request.user,
+            description=f"Valuation rejected by MD/GM for project: {valuation.project.title}. Reason: {rejection_reason}",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id, 'reason': rejection_reason},
+        )
+    except Exception:
+        pass
+
+    serializer = ValuationSerializer(valuation, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+# ============================================================================
+# Photo reorder + primary photo (Feature #9)
+# ============================================================================
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def reorder_valuation_photos(request, valuation_id):
+    """Accept an ordered list of photo IDs and update ordering field."""
+    valuation = get_object_or_404(Valuation, pk=valuation_id)
+    ordered_ids = request.data.get('photo_ids', [])
+    if not isinstance(ordered_ids, list):
+        return Response({'error': 'photo_ids must be a list'}, status=400)
+    for idx, photo_id in enumerate(ordered_ids):
+        ValuationPhoto.objects.filter(pk=photo_id, valuation=valuation).update(ordering=idx)
+    return Response({'status': 'ok'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def set_primary_photo(request, valuation_id, photo_id):
+    """Set one photo as primary (clears all others for this valuation first)."""
+    valuation = get_object_or_404(Valuation, pk=valuation_id)
+    ValuationPhoto.objects.filter(valuation=valuation).update(is_primary=False)
+    updated = ValuationPhoto.objects.filter(pk=photo_id, valuation=valuation).update(is_primary=True)
+    if not updated:
+        return Response({'error': 'Photo not found'}, status=404)
+    return Response({'status': 'ok'})
+
+
     try:
         meta = {'valuation_id': valuation.id, 'project_id': valuation.project.id}
         title = f'Valuation approved by MD/GM — {valuation.project.title}'
