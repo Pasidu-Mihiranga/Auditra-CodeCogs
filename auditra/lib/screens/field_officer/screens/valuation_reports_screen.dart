@@ -84,6 +84,280 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
     if (confirm != true) return;
 
     setState(() => _isLoading = true);
+    Widget _buildReportCard(Valuation valuation, Project project) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final statusColor =
+        FieldOfficerUiHelpers.getValuationStatusColor(valuation.status);
+    final isDraft = valuation.status == 'draft';
+    final isRejected = valuation.status == 'rejected';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.26 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: isRejected ? Border.all(color: Colors.red.shade200) : null,
+      ),
+      child: Column(
+        children: [
+          // Header with category and status
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.05),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+              border: Border(
+                bottom: BorderSide(color: statusColor.withOpacity(0.1)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0B1220) : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: statusColor.withOpacity(0.3)),
+                  ),
+                  child: Icon(
+                    _getCategoryIcon(valuation.category),
+                    size: 16,
+                    color: statusColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    valuation.categoryDisplay,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    valuation.statusDisplay.toUpperCase(),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          if (isRejected && valuation.rejectionReason != null && valuation.rejectionReason!.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: Colors.red.shade50,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.red.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Reason: ${valuation.rejectionReason}',
+                      style: TextStyle(
+                        color: Colors.red.shade900,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Estimated Value',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'LKR ${NumberFormat('#,##0.00').format(valuation.estimatedValue ?? 0)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Date',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('MMM dd, yyyy')
+                                .format(valuation.createdAt),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 14,
+                              color: isDark ? Colors.grey[200] : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (valuation.description != null &&
+                    valuation.description!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    valuation.description!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[300] : Colors.grey[700],
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // View Report PDF (if submitted/approved)
+                    if (valuation.finalReportUrl != null)
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                        color: Colors.red[700],
+                        tooltip: 'View PDF Report',
+                        onPressed: () {
+                          // TODO: View existing PDF logic
+                          // Use url_launcher or PDF viewer
+                        },
+                      )
+                    else 
+                      // Generate Review PDF for any status
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf),
+                        color: Colors.red[700],
+                        tooltip: 'Generate PDF Preview',
+                        onPressed: () async {
+                          // Generate PDF preview
+                          try {
+                            final file = await PdfService.generateValuationReport(
+                              valuation: valuation,
+                              project: project,
+                            );
+                            await OpenFile.open(file.path);
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error generating PDF: $e')),
+                            );
+                          }
+                        },
+                      ),
+
+                    // Edit Button (if allowed)
+                    if (FieldOfficerUiHelpers.canEditValuation(valuation))
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        color: Colors.blue[700],
+                        tooltip: 'Edit Report',
+                        onPressed: () async {
+                          final result = await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ValuationFormScreen(
+                                project: project,
+                                existingValuation: valuation,
+                              ),
+                            ),
+                          );
+                          if (result == true) {
+                            _refreshProject();
+                          }
+                        },
+                      ),
+                      
+                    // Submit Button (Draft or Rejected)
+                    if (isDraft || isRejected)
+                       IconButton(
+                        icon: const Icon(Icons.send_rounded),
+                        color: Colors.green[700],
+                        tooltip: 'Submit Report',
+                        onPressed: () async {
+                           // Navigate to edit/submit form directly
+                           final result = await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ValuationFormScreen(
+                                project: project,
+                                existingValuation: valuation,
+                              ),
+                            ),
+                          );
+                          if (result == true) {
+                            _refreshProject();
+                          }
+                        },
+                      ),
+
+                    // Delete Button (if allowed)
+                    if (FieldOfficerUiHelpers.canDeleteValuation(valuation))
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        color: Colors.grey[600],
+                        tooltip: 'Delete Report',
+                        onPressed: () => _deleteValuation(valuation),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
     try {
       final result = await ApiService.deleteValuation(valuation.id);
