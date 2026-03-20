@@ -1220,6 +1220,62 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                               ),
                             ],
                           ),
+                          // Show edit status banner if editing submitted valuation
+                  if (widget.existingValuation != null && widget.existingValuation!.status == 'submitted') ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: widget.existingValuation!.canBeEdited 
+                            ? Colors.orange[50] 
+                            : Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: widget.existingValuation!.canBeEdited 
+                              ? Colors.orange[300]! 
+                              : Colors.red[300]!,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: widget.existingValuation!.canBeEdited 
+                                  ? Colors.orange[100] 
+                                  : Colors.red[100],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              widget.existingValuation!.canBeEdited 
+                                  ? Icons.info_outline 
+                                  : Icons.error_outline,
+                              color: widget.existingValuation!.canBeEdited 
+                                  ? Colors.orange[900] 
+                                  : Colors.red[900],
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.existingValuation!.canBeEdited
+                                  ? 'This valuation was submitted. You can edit it within 2 hours of creation. Editing will reset it to draft status.'
+                                  : 'This valuation was submitted more than 2 hours ago and cannot be edited.',
+                              style: TextStyle(
+                                color: widget.existingValuation!.canBeEdited 
+                                    ? Colors.orange[900] 
+                                    : Colors.red[900],
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                           if (widget.project.description != null) ...[
                             const SizedBox(height: 12),
                             Container(
