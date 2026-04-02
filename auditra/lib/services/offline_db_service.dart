@@ -14,7 +14,59 @@ class OfflineDBService {
   
   /// Check if database is initialized (public getter)
   static bool get isInitialized => _isInitialized;
+  try {
+      // Initialize Hive Flutter
+      await Hive.initFlutter();
+      
+      // Open boxes
+      await Hive.openBox(_valuationsBoxName);
+      await Hive.openBox(_projectsCacheBoxName);
+      await Hive.openBox(_attendanceBoxName);
+      await Hive.openBox(_syncQueueBoxName);
+      await Hive.openBox(_photosCacheBoxName);
+      
+      _isInitialized = true;
+      print('Offline database initialized');
+    } catch (e) {
+      print('Error initializing offline database: $e');
+      rethrow;
+    }
+  }
 
+  /// Check if offline mode is enabled (only for field officers)
+  static Future<bool> isOfflineModeEnabled() async {
+    try {
+      final role = await ApiService.getUserRole();
+      return role == 'field_officer';
+    } catch (e) {
+      print('Error checking user role: $e');
+      return false;
+    }
+  }
+
+  /// Get valuations box
+  static Box get valuationsBox {
+    if (!_isInitialized) {
+      throw Exception('Offline database not initialized. Call initOfflineDB() first.');
+    }
+    return Hive.box(_valuationsBoxName);
+  }
+
+  /// Get projects cache box
+  static Box get projectsCacheBox {
+    if (!_isInitialized) {
+      throw Exception('Offline database not initialized. Call initOfflineDB() first.');
+    }
+    return Hive.box(_projectsCacheBoxName);
+  }
+
+  /// Get attendance box
+  static Box get attendanceBox {
+    if (!_isInitialized) {
+      throw Exception('Offline database not initialized. Call initOfflineDB() first.');
+    }
+    return Hive.box(_attendanceBoxName);
+  }
   /// Initialize Hive database (only for field officers)
   static Future<void> initOfflineDB() async {
     if (_isInitialized) {
@@ -39,9 +91,9 @@ class OfflineDBService {
       await Hive.openBox(_photosCacheBoxName);
       
       _isInitialized = true;
-      print('✅ Offline database initialized');
+      print('Offline database initialized');
     } catch (e) {
-      print('❌ Error initializing offline database: $e');
+      print('Error initializing offline database: $e');
       rethrow;
     }
   }

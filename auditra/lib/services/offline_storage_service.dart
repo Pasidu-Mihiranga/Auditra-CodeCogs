@@ -65,6 +65,122 @@ class OfflineStorageService {
       return [];
     }
     try {
+      /// Mark an attendance record as Failed with exponential back-off (see
+  /// [updateValuationSyncStatus] for the same algorithm).
+  static Future<void> markAttendanceFailed(String localId) async {
+    if (!OfflineDBService.isInitialized) return;
+    final box = OfflineDBService.attendanceBox;
+    final record = box.get(localId);
+    if (record == null) return;
+    final map = Map<String, dynamic>.from(record as Map);
+    map['syncStatus'] = 3;
+    final int attempts = ((map['retryCount'] as int?) ?? 0) + 1;
+    final seconds = (30 * (1 << (attempts - 1).clamp(0, 7))).clamp(30, 3600);
+    map['retryCount'] = attempts;
+    map['nextRetryAt'] =
+        DateTime.now().add(Duration(seconds: seconds)).toIso8601String();
+    await box.put(localId, map);
+  }
+
+  /// Mark attendance as synced
+  static Future<void> markAttendanceSynced(String localId, int serverId) async {
+    final box = OfflineDBService.attendanceBox;
+    final attendance = box.get(localId) as Map<String, dynamic>?;
+    
+    if (attendance != null) {
+      attendance['syncStatus'] = 1;
+      attendance['serverId'] = serverId;
+      attendance['syncedAt'] = DateTime.now().toIso8601String();
+      await box.put(localId, attendance);
+    }
+  }
+
+  /// Save photo offline to filesystem
+  /// Returns the file path where photo is stored
+  static Future<String> savePhotoOffline(File photoFile, String valuationLocalId) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final photosDir = Directory('${appDir.path}/photos/$valuationLocalId');
+      
+      if (!await photosDir.exists()) {
+        await photosDir.create(recursive: true);
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'photo_$timestamp.jpg';
+      final savedFile = File('${photosDir.path}/$fileName');
+      
+      await photoFile.copy(savedFile.path);
+      
+      // Store photo metadata in cache
+      final box = OfflineDBService.photosCacheBox;
+      final photoId = _uuid.v4();
+      await box.put(photoId, {
+        'id': photoId,
+        'valuationLocalId': valuationLocalId,
+        'filePath': savedFile.path,
+        'fileName': fileName,
+        'createdAt': DateTime.now().toIso8601String(),
+        'syncStatus': 0,
+        'serverId': null,
+      });
+      
+      print('Photo saved offline: ${savedFile.path}');
+      return savedFile.path;
+    } catch (e) {
+      print('Error saving photo offline: $e');
+      rethrow;
+    }
+  }
+
+  /// Get photo file path by photo ID
+  static String? getPhotoPath(String photoId) {
+    final box = OfflineDBService.photosCacheBox;
+    final photoData = box.get(photoId) as Map<String, dynamic>?;
+    return photoData?['filePath'] as String?;
+  }
+
+  /// Get all photos for a valuation
+  static List<Map<String, dynamic>> getPhotosForValuation(String valuationLocalId) {
+    final box = OfflineDBService.photosCacheBox;
+    return box.values
+        .where((value) {
+          final map = Map<String, dynamic>.from(value as Map);
+          return map['valuationLocalId'] == valuationLocalId;
+        })
+        .map((value) => Map<String, dynamic>.from(value as Map))
+        .toList();
+  }
+
+  /// Get unsynced photos (queued or retry-eligible failures).
+  static List<Map<String, dynamic>> getUnsyncedPhotos() {
+    if (!OfflineDBService.isInitialized) {
+      return [];
+    }
+    try {
+      final box = OfflineDBService.photosCacheBox;
+      final now = DateTime.now();
+      return box.values
+          .where((value) {
+            final map = Map<String, dynamic>.from(value as Map);
+            final s = map['syncStatus'];
+            if (s == 0) return true;
+            if (s == 3) {
+              final ts = map['nextRetryAt'];
+              if (ts == null) return true;
+              try {
+                return DateTime.parse(ts).isBefore(now) ||
+                    DateTime.parse(ts).isAtSameMomentAs(now);
+              } catch (_) {
+                return true;
+              }
+            }
+            return false;
+          })
+          .map((value) => Map<String, dynamic>.from(value as Map))
+          .toList();
+    } catch (e) {
+      return [];
       final box = OfflineDBService.valuationsBox;
       final now = DateTime.now();
       return box.values
@@ -103,7 +219,7 @@ class OfflineStorageService {
       // Delete the synced valuation immediately - it's already on the server
       // No need to keep it in local storage
       await box.delete(localId);
-      print('✅ Valuation synced and removed from local storage: $localId -> serverId: $serverId');
+      print(' Valuation synced and removed from local storage: $localId -> serverId: $serverId');
     }
   }
 
@@ -225,7 +341,7 @@ class OfflineStorageService {
         await box.delete(key);
       }
       
-      print('🗑️ Deleted ${keysToDelete.length} unsynced valuations');
+      print('Deleted ${keysToDelete.length} unsynced valuations');
       return keysToDelete.length;
     } catch (e) {
       print('Error deleting unsynced valuations: $e');
@@ -259,7 +375,7 @@ class OfflineStorageService {
     await box.put('projects_list', projectsJson);
     await box.put('last_updated', DateTime.now().toIso8601String());
     
-    print('💾 Cached ${projects.length} projects for offline access');
+    print('Cached ${projects.length} projects for offline access');
   }
 
   /// Get cached projects
@@ -348,7 +464,7 @@ class OfflineStorageService {
     };
 
     await box.put(localId, offlineAttendance);
-    print('💾 Attendance saved offline: $localId');
+    print('Attendance saved offline: $localId');
     
     return localId;
   }
@@ -451,7 +567,7 @@ class OfflineStorageService {
         'serverId': null,
       });
       
-      print('💾 Photo saved offline: ${savedFile.path}');
+      print('Photo saved offline: ${savedFile.path}');
       return savedFile.path;
     } catch (e) {
       print('Error saving photo offline: $e');
