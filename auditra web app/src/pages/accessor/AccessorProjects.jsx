@@ -316,6 +316,13 @@ export default function AccessorProjects() {
                                       </Typography>
                                     </Box>
 
+                                     {/* Rejection reason */}
+                                    {v.status === 'rejected' && v.rejection_reason && (
+                                      <Typography variant="body2" color="error.main" sx={{ mt: 0.5, fontSize: '0.8rem' }}>
+                                        Reason: {v.rejection_reason}
+                                      </Typography>
+                                    )}
+
                                     {/* Action buttons */}
                                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
                                       <Button
@@ -502,6 +509,39 @@ export default function AccessorProjects() {
                   </Box>
                 </Paper>
               )}
+
+              <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Valuation Details
+          <Chip
+            label={valuationDetailDialog.valuation?.status}
+            size="small"
+            color={getStatusColor(valuationDetailDialog.valuation?.status) || 'default'}
+          />
+        </DialogTitle>
+        <DialogContent dividers>
+          {valuationDetailDialog.valuation && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {/* Core Info */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Category</Typography>
+                  <Typography variant="body1" fontWeight="medium">{valuationDetailDialog.valuation.category_display}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Estimated Value</Typography>
+                  <Typography variant="body1" fontWeight="medium" color="primary.main">
+                    {valuationDetailDialog.valuation.estimated_value ? `Rs. ${parseFloat(valuationDetailDialog.valuation.estimated_value).toLocaleString()}` : 'N/A'}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Field Officer</Typography>
+                  <Typography variant="body1">{valuationDetailDialog.valuation.field_officer_name || valuationDetailDialog.valuation.field_officer_username}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Submitted Date</Typography>
+                  <Typography variant="body1">{formatDate(valuationDetailDialog.valuation.submitted_at || valuationDetailDialog.valuation.created_at)}</Typography>
+                </Box>
+              </Box>
 
               {valuationDetailDialog.valuation.category === 'building' && (
                 <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>

@@ -84,6 +84,32 @@ class ValuationDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update, or delete a valuation"""
     permission_classes = [IsAuthenticated]
     serializer_class = ValuationSerializer
+
+    def update(self, request, *args, **kwargs):
+        """Override update to check if valuation can be edited"""
+        instance = self.get_object()
+        
+        # Check if valuation can be edited (draft or submitted within 2 hours)
+        if not instance.can_be_edited():
+            return Response(
+                {
+                    'error': 'This valuation cannot be edited. Only draft valuations or valuations submitted within the last 2 hours can be edited.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # If status is submitted or rejected and being edited, reset to draft
+        # This allows rejected reports to be updated and resubmitted
+        if instance.status == 'submitted':
+            instance.status = 'draft'
+            instance.submitted_at = None
+            instance.save()
+        elif instance.status == 'rejected':
+            instance.status = 'draft'
+            instance.rejection_reason = ''  # Clear rejection reason when resubmitting
+            instance.save()
+        
+        return super().update(request, *args, **kwargs)
     
     def get_queryset(self):
         user = self.request.user
