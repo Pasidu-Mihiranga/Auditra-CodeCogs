@@ -658,7 +658,7 @@ class UploadPaymentSlipsView(APIView):
 
     def post(self, request):
         # Check if user is admin or HR Head
-        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'hr_head']:
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin','hr_head']:
             return Response({
                 'error': 'Only admins and HR Head can upload payment slips'
             }, status=status.HTTP_403_FORBIDDEN)

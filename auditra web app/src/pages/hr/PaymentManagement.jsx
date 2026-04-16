@@ -110,7 +110,7 @@ export default function PaymentManagement() {
               </Button>
             </Grid>
             <Grid item xs={2}>
-              <Button variant="outlined" color="primary" startIcon={<Upload />} onClick={handlePublish} disabled={publishing} fullWidth>
+              <Button variant="outlined" color="Secondary" startIcon={<Upload />} onClick={handlePublish} disabled={publishing} fullWidth>
                 {publishing ? 'Publishing...' : 'Publish'}
               </Button>
             </Grid>
