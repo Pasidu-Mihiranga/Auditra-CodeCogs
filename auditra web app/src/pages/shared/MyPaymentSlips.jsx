@@ -32,7 +32,7 @@ export default function MyPaymentSlips() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>My Payment Slips</Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>My Payment Slips...</Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {slips.length === 0 ? (

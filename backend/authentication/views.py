@@ -680,7 +680,7 @@ class UploadPaymentSlipsView(APIView):
         if not (1 <= month <= 12):
             return Response({
                 'success': False,
-                'error': 'Invalid month. Must be between 1 and 12.'
+                'error': 'Invalid Month. Must be between 1 and 12.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if year < 2000 or year > 2100:
