@@ -373,6 +373,14 @@ def reject_valuation(request, pk):
         notes=f"Valuation ({valuation.get_category_display()}) rejected by Accessor. Reason: {rejection_reason}",
         created_by=request.user
     )
+      
+    # Allow rejecting draft, submitted, or reviewed valuations
+    if valuation.status not in ['draft', 'submitted', 'reviewed']:
+        return Response(
+            {'error': f'Cannot reject valuation with status: {valuation.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
 
     # Create valuation history entry
     ValuationHistory.objects.create(
@@ -414,72 +422,6 @@ class SeniorValuerValuationListView(generics.ListAPIView):
     """List reviewed valuations assigned to senior valuer"""
     permission_classes = [IsAuthenticated]
     serializer_class = ValuationSerializer
-
-    def reject_valuation(request, pk):
-    """Reject a valuation (change status to rejected)"""
-    valuation = get_object_or_404(Valuation, pk=pk)
-    
-    # Check if user is an accessor (has accessor role)
-    if not hasattr(request.user, 'role') or request.user.role.role != 'accessor':
-        return Response(
-            {'error': 'Only accessors can reject valuations.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    # Check if accessor is assigned to the project
-    if valuation.project.assigned_accessor != request.user:
-        return Response(
-            {'error': 'You can only reject valuations for projects assigned to you.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    # Allow rejecting draft, submitted, or reviewed valuations
-    if valuation.status not in ['draft', 'submitted', 'reviewed']:
-        return Response(
-            {'error': f'Cannot reject valuation with status: {valuation.status}'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Get rejection reason from request
-    rejection_reason = request.data.get('rejection_reason', '').strip()
-    if not rejection_reason:
-        return Response(
-            {'error': 'Rejection reason is required.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Update valuation status and rejection reason
-    valuation.status = 'rejected'
-    valuation.rejection_reason = rejection_reason
-    valuation.save(update_fields=['status', 'rejection_reason', 'updated_at'])
-    
-    logger.info(f'Valuation {valuation.id} rejected by accessor {request.user.username}')
-    
-    ProjectStatusHistory.objects.create(
-        project=valuation.project,
-        status=valuation.project.status,
-        notes=f"Valuation ({valuation.get_category_display()}) rejected by Accessor. Reason: {rejection_reason}",
-        created_by=request.user
-    )
-
-    # Create valuation history entry
-    ValuationHistory.objects.create(
-        valuation=valuation,
-        action='rejected_by_accessor',
-        performed_by=request.user,
-        comments=rejection_reason,
-    )
-
-    # Create notification for field officer
-    accessor_name = request.user.get_full_name() or request.user.username
-    Notification.objects.create(
-        user=valuation.field_officer,
-        title='Valuation Rejected by Assessor',
-        message=f'Your {valuation.get_category_display()} valuation for project "{valuation.project.title}" has been rejected by Assessor ({accessor_name}). Reason: {rejection_reason}',
-        notification_type='rejection',
-        valuation=valuation,
-        project=valuation.project,
-    )
     
     def get_queryset(self):
         user = self.request.user

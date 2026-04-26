@@ -434,7 +434,6 @@ export default function AccessorProjects() {
         </Table>
       </TableContainer>
 
-
       {/* Valuation Detail Dialog */}
       <Dialog
         open={valuationDetailDialog.open}
@@ -442,7 +441,6 @@ export default function AccessorProjects() {
         maxWidth="md"
         fullWidth
       >
-        
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           Valuation Details
           <Chip
@@ -534,248 +532,6 @@ export default function AccessorProjects() {
                   </Box>
                 </Paper>
               )}
-
-              <TableRow
-                      hover
-                      sx={{
-                        '& > *': { borderBottom: '1px solid', borderColor: 'divider' },
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => handleToggleExpand(project)}
-                    >
-                      <TableCell sx={{ width: 48 }}>
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleToggleExpand(project); }}>
-                          {isExpanded ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-                        </IconButton>
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{project.title}</TableCell>
-                      <TableCell>{project.client_name || project.client_info?.name || 'N/A'}</TableCell>
-                      <TableCell>{formatDate(project.start_date)}</TableCell>
-                      <TableCell>{formatDate(project.end_date || project.due_date)}</TableCell>
-                      <TableCell align="center">
-                        <Chip label={capitalize(project.priority) || 'Normal'} size="small"
-                          sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, fontSize: 12, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(project.priority)}50` }} />
-                      </TableCell>
-                      <TableCell align="center">
-                        <StatusChip status={project.status} label={capitalize(project.status?.replace('_', ' ')) || '-'} />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="body2" color="text.secondary">
-                          {`${project.valuations_count ?? project.valuations?.length ?? 0} valuation(s)`}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-
-                    {/* Expandable Detail Row */}
-                    <TableRow>
-                      <TableCell
-                        colSpan={colCount}
-                        sx={{ py: 0, borderBottom: isExpanded ? undefined : 'none' }}
-                      >
-                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                          <Box sx={{ py: 3, px: 3 }}>
-                            {/* Project Details Section */}
-                            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflowX: 'auto', mb: 3 }}>
-                              <Box sx={{ minWidth: 200, flex: '1 1 auto' }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
-                                  Project Information
-                                </Typography>
-                                <DetailField label="Description" value={project.description || 'No description'} />
-                                <DetailField label="Priority" value={capitalize(project.priority) || 'Normal'} />
-                              </Box>
-                              <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
-                                  Timeline
-                                </Typography>
-                                <DetailField label="Start Date" value={formatDate(project.start_date)} />
-                                <DetailField label="Due Date" value={formatDate(project.end_date || project.due_date)} />
-                              </Box>
-                              <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
-                                  Client
-                                </Typography>
-                                <DetailField label="Client Name" value={project.client_name || project.client_info?.name || 'N/A'} />
-                                <DetailField label="Status" value={capitalize(project.status?.replace('_', ' ')) || '-'} />
-                              </Box>
-                            </Box>
-
-                            {/* Valuations Section */}
-                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
-                              Valuations
-                            </Typography>
-
-                            {valuations.length === 0 ? (
-                              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                No valuations submitted for this project yet.
-                              </Typography>
-                            ) : (
-                              <Box sx={{
-                                position: 'relative',
-                                pl: 3,
-                                '&::before': {
-                                  content: '""',
-                                  position: 'absolute',
-                                  left: 8,
-                                  top: 10,
-                                  bottom: 10,
-                                  width: '2px',
-                                  bgcolor: 'divider',
-                                },
-                              }}>
-                                {valuations.map((v, index) => (
-                                  <Box key={v.id} sx={{ mb: 3, position: 'relative', '&:last-child': { mb: 0 } }}>
-                                    {/* Timeline dot */}
-                                    <Box sx={{
-                                      position: 'absolute',
-                                      left: -21,
-                                      top: 4,
-                                      width: 12,
-                                      height: 12,
-                                      borderRadius: '50%',
-                                      bgcolor: index === 0 ? 'primary.main' : 'divider',
-                                      border: '2px solid white',
-                                      boxShadow: '0 0 0 2px rgba(0,0,0,0.05)',
-                                      zIndex: 1,
-                                    }} />
-
-                                    {/* Title row: category + value */}
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                                      <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                                        {v.category_display || v.category || 'N/A'}
-                                      </Typography>
-                                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                                        {v.estimated_value ? `Rs. ${parseFloat(v.estimated_value).toLocaleString()}` : ''}
-                                      </Typography>
-                                    </Box>
-
-                                    {/* Rejection reason */}
-                                    {v.status === 'rejected' && v.rejection_reason && (
-                                      <Typography variant="body2" color="error.main" sx={{ mt: 0.5, fontSize: '0.8rem' }}>
-                                        Reason: {v.rejection_reason}
-                                      </Typography>
-                                    )}
-
-                                    {/* Metadata row: field officer + date */}
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Person sx={{ fontSize: 14 }} /> {v.field_officer_name || v.field_officer_username || 'N/A'}
-                                      </Typography>
-                                      <Typography variant="caption" color="text.secondary">•</Typography>
-                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <CalendarToday sx={{ fontSize: 14 }} /> {formatDate(v.submitted_at || v.created_at)}
-                                      </Typography>
-                                    </Box>
-
-                                    {/* Action buttons */}
-                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                                      <Button
-                                        size="small"
-                                        startIcon={<PictureAsPdf />}
-                                        onClick={() => {
-                                          if (v.submitted_report_url) {
-                                            window.open(v.submitted_report_url, '_blank');
-                                          } else {
-                                            viewValuationPDF(v, project.title);
-                                          }
-                                        }}
-                                        sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
-                                      >
-                                        View PDF
-                                      </Button>
-                                      {(v.status === 'submitted' || v.status === 'under_review') && (
-                                        <>
-                                          <Button
-                                            size="small"
-                                            variant="outlined"
-                                            color="primary"
-                                            onClick={() => setAcceptDialog({ open: true, valuationId: v.id, comments: '' })}
-                                            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
-                                          >
-                                            Accept
-                                          </Button>
-                                          <Button
-                                            size="small"
-                                            variant="outlined"
-                                            color="error"
-                                            onClick={() => setRejectDialog({ open: true, valuationId: v.id, reason: '' })}
-                                            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
-                                          >
-                                            Reject
-                                          </Button>
-                                        </>
-                                      )}
-                                      {['reviewed', 'approved', 'rejected'].includes(v.status) && (
-                                        <Chip
-                                          label={(v.status === 'reviewed' || v.status === 'approved') ? 'Accepted' : 'Rejected'}
-                                          size="small"
-                                          sx={{
-                                            fontSize: '0.72rem',
-                                            fontWeight: 600,
-                                            bgcolor: (v.status === 'reviewed' || v.status === 'approved') ? '#1565C015' : '#0D47A115',
-                                            color: (v.status === 'reviewed' || v.status === 'approved') ? '#1565C0' : '#0D47A1',
-                                            border: `1px solid ${(v.status === 'reviewed' || v.status === 'approved') ? '#1565C050' : '#0D47A150'}`,
-                                          }}
-                                        />
-                                      )}
-                                    </Stack>
-
-                                    {/* Report History */}
-                                    {v.history && v.history.length > 0 && (
-                                      <ReportHistory history={v.history} />
-                                    )}
-                                  </Box>
-                                ))}
-                              </Box>
-                            )}
-
-                            {/* Project Documents */}
-                            {project.documents && project.documents.length > 0 && (
-                              <Box sx={{ mt: 3 }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
-                                  Project Documents
-                                </Typography>
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                  {project.documents.map((doc) => (
-                                    <Box
-                                      key={doc.id}
-                                      sx={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        p: 1.5,
-                                        bgcolor: (t) => t.palette.custom?.cardInner || (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f5f7fa'),
-                                        borderRadius: 1,
-                                        border: '1px solid',
-                                        borderColor: 'divider',
-                                      }}
-                                    >
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <Description sx={{ color: 'primary.main', fontSize: 20 }} />
-                                        <Box>
-                                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{doc.name}</Typography>
-                                          <Typography variant="caption" color="text.secondary">
-                                            {doc.file_size ? (doc.file_size < 1024 * 1024 ? `${(doc.file_size / 1024).toFixed(1)} KB` : `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB`) : ''}
-                                          </Typography>
-                                        </Box>
-                                      </Box>
-                                      <Button
-                                        size="small"
-                                        startIcon={<Download />}
-                                        href={doc.file_url}
-                                        target="_blank"
-                                        sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
-                                      >
-                                        Download
-                                      </Button>
-                                    </Box>
-                                  ))}
-                                </Box>
-                              </Box>
-                            )}
-                          </Box>
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
 
               {valuationDetailDialog.valuation.category === 'vehicle' && (
                 <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
@@ -937,6 +693,22 @@ export default function AccessorProjects() {
           <Button onClick={handleRejectValuation} color="error" variant="contained" sx={{ width: 110 }}>Reject</Button>
         </DialogActions>
       </Dialog>
+
+        <Dialog open={acceptDialog.open} onClose={() => setAcceptDialog({ ...acceptDialog, open: false })}>
+        <DialogTitle>Accept & Submit to Senior Valuer</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Add your comments for this valuation. This will be submitted as a draft report to the Senior Valuer.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            rows={3}
+            label="Comments (optional)"
+            value={acceptDialog.comments}
+            onChange={(e) => setAcceptDialog({ ...acceptDialog, comments: e.target.value })}
+          />
 
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
         <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>{snackbar.message}</Alert>
