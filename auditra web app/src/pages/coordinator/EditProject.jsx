@@ -243,6 +243,29 @@ export default function EditProject() {
           <Button variant="outlined" onClick={() => navigate(`/dashboard/projects/${id}`)}>Cancel</Button>
           <Button type="submit" variant="contained" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
         </Box>
+         {/* Project Documents */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Project Documents</Typography>
+
+            {/* Existing Documents */}
+            {existingDocuments.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontWeight: 500 }}>
+                  Current Documents
+                </Typography>
+                {existingDocuments.map((doc) => (
+                  <Box
+                    key={doc.id}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      p: 1.5,
+                      mb: 1,
+                      bgcolor: (t) => t.palette.custom?.cardInner || (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f5f7fa'),
+                      borderRadius: 1,
+                    }}
       </form>
     </Box>
   );
