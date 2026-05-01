@@ -694,22 +694,6 @@ export default function AccessorProjects() {
         </DialogActions>
       </Dialog>
 
-        <Dialog open={acceptDialog.open} onClose={() => setAcceptDialog({ ...acceptDialog, open: false })}>
-        <DialogTitle>Accept & Submit to Senior Valuer</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Add your comments for this valuation. This will be submitted as a draft report to the Senior Valuer.
-          </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            multiline
-            rows={3}
-            label="Comments (optional)"
-            value={acceptDialog.comments}
-            onChange={(e) => setAcceptDialog({ ...acceptDialog, comments: e.target.value })}
-          />
-
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
         <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>{snackbar.message}</Alert>
       </Snackbar>

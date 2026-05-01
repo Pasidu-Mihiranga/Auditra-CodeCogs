@@ -154,6 +154,28 @@ export default function ValuationReview() {
             )}
           </TableBody>
         </Table>
+
+         <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Valuation Review</Typography>
+
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tab label={`All (${valuations.length})`} />
+          <Tab label={`Pending (${valuations.filter(v => isPending(v.status)).length})`} />
+          <Tab label={`Approved (${valuations.filter(v => v.status === 'approved').length})`} />
+          <Tab label={`Rejected (${valuations.filter(v => v.status === 'rejected').length})`} />
+        </Tabs>
+      </Paper>
+
+      <TextField
+        placeholder="Search by project or field officer..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        fullWidth
+        sx={{ mb: 3 }}
+        InputProps={{
+          startAdornment: <InputAdornment position="start"><Search /></InputAdornment>,
+        }}
+      />
       </TableContainer>
 
       <Dialog open={detailDialog.open} onClose={() => setDetailDialog({ open: false, valuation: null })} maxWidth="md" fullWidth>

@@ -373,14 +373,6 @@ def reject_valuation(request, pk):
         notes=f"Valuation ({valuation.get_category_display()}) rejected by Accessor. Reason: {rejection_reason}",
         created_by=request.user
     )
-      
-    # Allow rejecting draft, submitted, or reviewed valuations
-    if valuation.status not in ['draft', 'submitted', 'reviewed']:
-        return Response(
-            {'error': f'Cannot reject valuation with status: {valuation.status}'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
 
     # Create valuation history entry
     ValuationHistory.objects.create(
@@ -566,6 +558,29 @@ def senior_valuer_approve_valuation(request, pk):
         'message': 'Valuation approved and sent to MD/GM for final approval.'
     }, status=status.HTTP_200_OK)
 
+class SeniorValuerValuationListView(generics.ListAPIView):
+    """List reviewed valuations assigned to senior valuer"""
+    permission_classes = [IsAuthenticated]
+    serializer_class = ValuationSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Check if user is a senior valuer
+        if not hasattr(user, 'role') or user.role.role != 'senior_valuer':
+            return Valuation.objects.none()
+        
+        # Get reviewed valuations for projects assigned to this senior valuer
+        queryset = Valuation.objects.filter(
+            project__assigned_senior_valuer=user,
+            status='reviewed'
+        ).select_related('project', 'field_officer').prefetch_related('photos')
+        
+        project_id = self.request.query_params.get('project', None)
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        
+        return queryset
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
