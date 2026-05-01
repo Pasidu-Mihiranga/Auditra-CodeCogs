@@ -302,7 +302,19 @@ export default function ProjectDetail() {
       setReportLoading(false);
     }
   };
-
+const handleUpdateStatus = async (newStatus) => {
+    setUpdatingStatus(true);
+    setError('');
+    try {
+      await projectService.updateProject(id, { status: newStatus });
+      setSuccess(`Project status updated to ${newStatus.replace(/_/g, ' ')}!`);
+      await fetchProject();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update status');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
   const handleSendReport = async () => {
     if (!generatedReport) return;
     setSendingReport(true);
