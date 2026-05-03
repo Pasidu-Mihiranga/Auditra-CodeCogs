@@ -323,6 +323,24 @@ def accept_valuation(request, pk):
         'message': f'Valuation accepted and sent to senior valuer ({senior_valuer_name}) for final approval.'
     }, status=status.HTTP_200_OK)
 
+  # Change status to reviewed (accessor acceptance - not final approval)
+    # Reports are automatically sent to senior valuer for final approval
+    valuation.status = 'reviewed'
+
+    # Save accessor comments if provided
+    accessor_comments = request.data.get('accessor_comments', '').strip()
+    valuation.accessor_comments = accessor_comments
+
+    # Clear rejection reason if it exists
+    valuation.rejection_reason = ''
+    valuation.save(update_fields=['status', 'accessor_comments', 'rejection_reason', 'updated_at'])
+    
+    senior_valuer_name = valuation.project.assigned_senior_valuer.get_full_name() or valuation.project.assigned_senior_valuer.username
+    logger.info(
+        f'Valuation {valuation.id} accepted by accessor {request.user.username} - '
+        f'status changed to reviewed and sent to senior valuer {senior_valuer_name} (ID: {valuation.project.assigned_senior_valuer.id})'
+    )
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -558,29 +576,6 @@ def senior_valuer_approve_valuation(request, pk):
         'message': 'Valuation approved and sent to MD/GM for final approval.'
     }, status=status.HTTP_200_OK)
 
-class SeniorValuerValuationListView(generics.ListAPIView):
-    """List reviewed valuations assigned to senior valuer"""
-    permission_classes = [IsAuthenticated]
-    serializer_class = ValuationSerializer
-    
-    def get_queryset(self):
-        user = self.request.user
-        
-        # Check if user is a senior valuer
-        if not hasattr(user, 'role') or user.role.role != 'senior_valuer':
-            return Valuation.objects.none()
-        
-        # Get reviewed valuations for projects assigned to this senior valuer
-        queryset = Valuation.objects.filter(
-            project__assigned_senior_valuer=user,
-            status='reviewed'
-        ).select_related('project', 'field_officer').prefetch_related('photos')
-        
-        project_id = self.request.query_params.get('project', None)
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
-        
-        return queryset
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
