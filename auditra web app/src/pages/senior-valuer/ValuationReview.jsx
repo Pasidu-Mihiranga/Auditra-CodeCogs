@@ -27,40 +27,6 @@ export default function ValuationReview() {
 
   useEffect(() => { fetchValuations(); }, []);
 
-  const handleApproveAndSend = async (id) => {
-    try {
-      setActionLoading(true);
-      await valuationService.approveValuation(id, { senior_valuer_comments: remarks });
-      setSnackbar({ open: true, message: 'Valuation approved and sent to MD/GM for final approval', severity: 'success' });
-      setRemarks('');
-      setDetailDialog({ open: false, valuation: null });
-      fetchValuations();
-    } catch {
-      setSnackbar({ open: true, message: 'Failed to approve valuation', severity: 'error' });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleReject = async (id) => {
-    if (!remarks.trim()) {
-      setSnackbar({ open: true, message: 'Rejection reason is required', severity: 'warning' });
-      return;
-    }
-    try {
-      setActionLoading(true);
-      await valuationService.seniorValuerReject(id, { rejection_reason: remarks });
-      setSnackbar({ open: true, message: 'Valuation rejected successfully', severity: 'success' });
-      setRemarks('');
-      setDetailDialog({ open: false, valuation: null });
-      fetchValuations();
-    } catch {
-      setSnackbar({ open: true, message: 'Failed to reject valuation', severity: 'error' });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const fetchValuations = async () => {
     try {
       setLoading(true);

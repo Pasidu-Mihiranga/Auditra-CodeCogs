@@ -323,24 +323,6 @@ def accept_valuation(request, pk):
         'message': f'Valuation accepted and sent to senior valuer ({senior_valuer_name}) for final approval.'
     }, status=status.HTTP_200_OK)
 
-  # Change status to reviewed (accessor acceptance - not final approval)
-    # Reports are automatically sent to senior valuer for final approval
-    valuation.status = 'reviewed'
-
-    # Save accessor comments if provided
-    accessor_comments = request.data.get('accessor_comments', '').strip()
-    valuation.accessor_comments = accessor_comments
-
-    # Clear rejection reason if it exists
-    valuation.rejection_reason = ''
-    valuation.save(update_fields=['status', 'accessor_comments', 'rejection_reason', 'updated_at'])
-    
-    senior_valuer_name = valuation.project.assigned_senior_valuer.get_full_name() or valuation.project.assigned_senior_valuer.username
-    logger.info(
-        f'Valuation {valuation.id} accepted by accessor {request.user.username} - '
-        f'status changed to reviewed and sent to senior valuer {senior_valuer_name} (ID: {valuation.project.assigned_senior_valuer.id})'
-    )
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -576,6 +558,21 @@ def senior_valuer_approve_valuation(request, pk):
         'message': 'Valuation approved and sent to MD/GM for final approval.'
     }, status=status.HTTP_200_OK)
 
+  valuation.status = 'approved'
+
+    update_fields = ['status', 'updated_at']
+    if senior_valuer_comments:
+        update_fields.append('senior_valuer_comments')
+    valuation.save(update_fields=update_fields)
+
+    logger.info(f'Valuation {valuation.id} approved by senior valuer {request.user.username} and sent to MD/GM')
+
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) approved by Senior Valuer and sent to MD/GM for final approval.",
+        created_by=request.user
+    )
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
