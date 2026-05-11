@@ -21,6 +21,8 @@ Auditra/
 | Mobile App | Flutter 3.10+, Provider, HTTP                  |
 | Email      | SendGrid                                       |
 
+
+
 ## User Roles
 
 | Role              | Web App                 | Mobile App              |
@@ -201,8 +203,7 @@ DEFAULT_FROM_EMAIL=your-email@example.com
 | POST   | `/<pk>/photos/`        | Upload photos            |
 
 ## Project Structure
-
-### Backend (`backend/`)
+#backend
 
 ```
 backend/
