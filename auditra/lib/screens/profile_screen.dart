@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -5,10 +6,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/theme_service.dart';
+import '../services/sync_engine.dart';
+import '../services/network_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/user_avatar.dart';
 import 'change_password_screen.dart';
 import 'field_officer/screens/valuation_history_screen.dart';
+
 
 class ProfileScreen extends StatefulWidget {
   final bool showAppBar;
@@ -32,11 +36,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _uploading = false;
   String? _avatarUrl;
 
+  // Sync state monitoring
+  bool _isOnline = true;
+  bool _isSyncing = false;
+  int _pendingCount = 0;
+  bool _isFieldOfficer = false;
+  StreamSubscription? _networkSubscription;
+  Function(Map<String, dynamic>)? _syncListener;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _initSyncStatus();
   }
+
 
   Future<void> _load() async {
     try {
@@ -81,6 +95,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     }
+  }
+
+  Future<void> _initSyncStatus() async {
+    try {
+      final role = await ApiService.getUserRole();
+      if (mounted) {
+        setState(() {
+          _isFieldOfficer = role == 'field_officer';
+        });
+      }
+      if (!NetworkService.isInitialized) {
+        await NetworkService.init();
+      }
+      await _loadSyncStatus();
+      _setupSyncListeners();
+    } catch (e) {
+      debugPrint('Error initializing sync status in profile: $e');
+    }
+  }
+
+  Future<void> _loadSyncStatus() async {
+    try {
+      final status = await SyncEngine.getStatus();
+      if (mounted) {
+        setState(() {
+          _isOnline = status['isOnline'] as bool? ?? true;
+          _isSyncing = status['isSyncing'] as bool? ?? false;
+          _pendingCount = (status['pendingValuations'] as int? ?? 0) +
+              (status['pendingAttendance'] as int? ?? 0) +
+              (status['pendingPhotos'] as int? ?? 0) +
+              (status['pendingSubmitActions'] as int? ?? 0);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isOnline = NetworkService.isOnline;
+          _isSyncing = false;
+          _pendingCount = 0;
+        });
+      }
+    }
+  }
+
+  void _setupSyncListeners() {
+    _networkSubscription = NetworkService.networkStatusStream.listen((isOnline) {
+      if (mounted) {
+        setState(() {
+          _isOnline = isOnline;
+        });
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) _loadSyncStatus();
+        });
+      }
+    });
+
+    _syncListener = (event) {
+      if (!mounted) return;
+      final eventType = event['event'] as String?;
+      if (eventType == 'syncStart') {
+        setState(() {
+          _isSyncing = true;
+        });
+      } else if (eventType == 'syncComplete' || eventType == 'syncError') {
+        setState(() {
+          _isSyncing = false;
+        });
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) _loadSyncStatus();
+        });
+      } else if (eventType == 'valuationSynced' || eventType == 'syncSuccess') {
+        if (eventType == 'syncSuccess') {
+          setState(() {
+            _isSyncing = false;
+          });
+        }
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) _loadSyncStatus();
+        });
+      }
+    };
+    SyncEngine.addListener(_syncListener!);
+  }
+
+  @override
+  void dispose() {
+    _networkSubscription?.cancel();
+    if (_syncListener != null) {
+      SyncEngine.removeListener(_syncListener!);
+    }
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _bioCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _save() async {
@@ -300,80 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 10),
 
           // Offline sync status banner
-          GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Database is fully synchronized'),
-                  backgroundColor: AppColors.success,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 20),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.cloud_done_rounded,
-                      color: AppColors.accent,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Offline Sync Status',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: isDark ? Colors.white : const Color(0xFF111827),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'All local reports synced & secure',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: isDark ? const Color(0xFF64748B) : const Color(0xFF9CA3AF),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          if (_isFieldOfficer) _buildSyncStatusBanner(isDark),
 
           // Dual Grid Cards
           Row(
@@ -626,23 +662,221 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       },
                     ),
-                    _divider(isDark),
-                    _buildListItem(
-                      context: context,
-                      icon: Icons.logout_rounded,
-                      title: 'Logout',
-                      subtitle: 'Sign out of your session safely',
-                      isDark: isDark,
-                      iconColor: Colors.red[400],
-                      onTap: () => _confirmLogout(context),
-                    ),
                   ],
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.error.withOpacity(0.2),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: () => _confirmLogout(context),
+                icon: const Icon(Icons.logout_rounded, size: 20),
+                label: const Text(
+                  'Logout',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 100),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSyncStatusBanner(bool isDark) {
+    // Styles for online vs offline vs pending sync
+    final Color bannerBg;
+    final Color bannerBorder;
+    final Color iconBg;
+    final Color iconColor;
+    final IconData iconData;
+    final String titleText;
+    final String subtitleText;
+    final VoidCallback? onTapAction;
+
+    if (!_isOnline) {
+      bannerBg = isDark ? const Color(0xFF2C1F15) : const Color(0xFFFFF7ED);
+      bannerBorder = isDark ? const Color(0xFF78350F) : const Color(0xFFFFEDD5);
+      iconBg = isDark ? const Color(0xFF78350F) : const Color(0xFFFFE0B2);
+      iconColor = Colors.orange[800]!;
+      iconData = Icons.cloud_off_rounded;
+      titleText = 'Offline Mode';
+      subtitleText = _pendingCount > 0 
+          ? '$_pendingCount report${_pendingCount > 1 ? "s" : ""} queued. Connect to sync.' 
+          : 'Changes will sync when online.';
+      onTapAction = () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Device is offline. Connect to the internet to sync data.'),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      };
+    } else if (_pendingCount > 0) {
+      bannerBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF0F9FF);
+      bannerBorder = isDark ? const Color(0xFF334155) : const Color(0xFFBAE6FD);
+      iconBg = isDark ? const Color(0xFF334155) : const Color(0xFFE0F2FE);
+      iconColor = AppColors.accent;
+      iconData = Icons.sync_rounded;
+      titleText = _isSyncing ? 'Syncing Reports...' : 'Sync Pending';
+      subtitleText = _isSyncing 
+          ? 'Uploading report data to server...' 
+          : '$_pendingCount report${_pendingCount > 1 ? "s" : ""} waiting to upload. Tap to sync.';
+      onTapAction = () async {
+        if (_isSyncing) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Synchronization is already in progress...'),
+              backgroundColor: AppColors.accent,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Starting synchronization...'),
+              backgroundColor: AppColors.accent,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          await SyncEngine.syncAll();
+        }
+      };
+    } else {
+      bannerBg = isDark ? const Color(0xFF14241C) : const Color(0xFFF0FDF4);
+      bannerBorder = isDark ? const Color(0xFF166534) : const Color(0xFFDCFCE7);
+      iconBg = isDark ? const Color(0xFF166534) : const Color(0xFFD1FAE5);
+      iconColor = const Color(0xFF16A34A);
+      iconData = Icons.cloud_done_rounded;
+      titleText = 'All Reports Synced';
+      subtitleText = 'All local reports synced & secure';
+      onTapAction = () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Database is fully synchronized'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      };
+    }
+
+    return GestureDetector(
+      onTap: onTapAction,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: bannerBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: bannerBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconBg,
+                shape: BoxShape.circle,
+              ),
+              child: _isSyncing && _isOnline && _pendingCount > 0
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: iconColor,
+                      ),
+                    )
+                  : Icon(
+                      iconData,
+                      color: iconColor,
+                      size: 20,
+                    ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titleText,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? Colors.white : const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitleText,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_isOnline && _pendingCount > 0 && !_isSyncing)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'SYNC',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            else
+              Icon(
+                Icons.chevron_right_rounded,
+                color: isDark ? const Color(0xFF64748B) : const Color(0xFF9CA3AF),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1008,52 +1242,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: Text(
-            'Confirm Logout',
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              color: isDark ? Colors.white : const Color(0xFF111827),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Warning/Logout Icon Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.logout_rounded,
+                    color: AppColors.error,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Title
+                Text(
+                  'Confirm Logout',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Description
+                Text(
+                  'Are you sure you want to log out of your account?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(
+                            color: isDark ? const Color(0xFF475569) : const Color(0xFFD1D5DB),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF4B5563),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context); // Close dialog
+                          await ApiService.logout();
+                          if (context.mounted) {
+                            Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'Logout',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          content: Text(
-            'Are you sure you want to log out of your account?',
-            style: TextStyle(
-              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF4B5563),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancel',
-                style: TextStyle(
-                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(context); // Close dialog
-                await ApiService.logout();
-                if (context.mounted) {
-                  Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[500],
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
         );
       },
     );
