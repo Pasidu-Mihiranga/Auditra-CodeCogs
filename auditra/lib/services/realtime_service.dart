@@ -1,5 +1,6 @@
-remote import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -75,7 +76,8 @@ class RealTimeService {
 
     // Replace http(s) with ws(s) and append JWT query param
     // baseUrl example: http://10.0.2.2:8000/api
-    const rawBase = String.fromEnvironment('WS_BASE', defaultValue: 'ws://10.0.2.2:8000');
+    const defaultWsBase = kIsWeb ? 'ws://localhost:8000' : 'ws://10.0.2.2:8000';
+    const rawBase = String.fromEnvironment('WS_BASE', defaultValue: defaultWsBase);
     final wsUrl = '$rawBase$_activePath?token=$token';
 
     try {

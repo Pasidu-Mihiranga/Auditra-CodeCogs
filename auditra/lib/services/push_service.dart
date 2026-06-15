@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -73,7 +74,8 @@ class PushService {
     final accessToken = prefs.getString('access_token');
     if (accessToken == null) return;
 
-    const baseUrl = String.fromEnvironment('API_BASE', defaultValue: 'http://10.0.2.2:8000/api');
+    const defaultApiBase = kIsWeb ? 'http://localhost:8000/api' : 'http://10.0.2.2:8000/api';
+    const baseUrl = String.fromEnvironment('API_BASE', defaultValue: defaultApiBase);
     await http.post(
       Uri.parse('$baseUrl/notifications/device-tokens/'),
       headers: {

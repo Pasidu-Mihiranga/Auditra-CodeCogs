@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,7 +13,7 @@ class ApiService {
   // For emulator, use 10.0.2.2 (Android) or localhost (iOS)
   // For physical device, use your computer's IP address (e.g., 'http://192.168.1.100:8000/api')
   // For Chrome/web, use localhost
-  static const String baseUrl = 'http://10.0.2.2:8000/api'; // Using 10.0.2.2 for Android emulator
+  static const String baseUrl = kIsWeb ? 'http://localhost:8000/api' : 'http://10.0.2.2:8000/api';
 
   // Register new user
   static Future<Map<String, dynamic>> register({
