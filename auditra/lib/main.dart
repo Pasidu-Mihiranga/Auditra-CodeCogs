@@ -14,18 +14,18 @@ import 'services/push_service.dart';
 import 'theme/app_colors.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Hive initialisation
-  await Hive.initFlutter();
-  await SyncEngine.init();
+    // Hive initialisation
+    await Hive.initFlutter();
+    await SyncEngine.init();
 
-  // Global error handler
-  FlutterError.onError = (details) {
-    ErrorReporter.reportFlutterError(details);
-  };
+    // Global error handler
+    FlutterError.onError = (details) {
+      ErrorReporter.reportFlutterError(details);
+    };
 
-  runZonedGuarded(() {
     HttpOverrides.global = MyHttpOverrides();
     final themeService = ThemeService();
 

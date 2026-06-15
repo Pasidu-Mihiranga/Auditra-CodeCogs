@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../../models/project_model.dart';
 import '../../../../theme/app_colors.dart';
 
-class FieldOfficerProjectCard extends StatelessWidget {
+class FieldOfficerProjectCard extends StatefulWidget {
   final Project project;
   final Function(Project) onViewDetails;
   final Function(Project) onViewReports;
@@ -21,6 +21,13 @@ class FieldOfficerProjectCard extends StatelessWidget {
     this.onScheduleVisit,
   });
 
+  @override
+  State<FieldOfficerProjectCard> createState() => _FieldOfficerProjectCardState();
+}
+
+class _FieldOfficerProjectCardState extends State<FieldOfficerProjectCard> {
+  bool _isExpanded = false;
+
   static String _formatNextVisitLine(String? iso) {
     if (iso == null || iso.isEmpty) return 'Not set';
     try {
@@ -32,427 +39,358 @@ class FieldOfficerProjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final priority = project.priority ?? 'medium';
+    final priority = widget.project.priority ?? 'medium';
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
+    // Status colors
+    Color statusColor;
+    Color statusBg;
+    switch (widget.project.status) {
+      case 'pending':
+        statusColor = const Color(0xFFD97706); // Amber
+        statusBg = isDark ? const Color(0xFF3A2D1B) : const Color(0xFFFEF3C7);
+        break;
+      case 'in_progress':
+        statusColor = AppColors.accent; // Vibrant Blue
+        statusBg = isDark ? const Color(0xFF1E3A8A) : const Color(0xFFE0F2FE);
+        break;
+      case 'completed':
+        statusColor = const Color(0xFF059669); // Emerald Green
+        statusBg = isDark ? const Color(0xFF064E3B) : const Color(0xFFD1FAE5);
+        break;
+      case 'cancelled':
+        statusColor = const Color(0xFFE11D48); // Rose Red
+        statusBg = isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFFE4E6);
+        break;
+      default:
+        statusColor = const Color(0xFF4B5563);
+        statusBg = isDark ? const Color(0xFF374151) : const Color(0xFFF3F4F6);
+    }
+
+    // Priority colors
+    Color priorityColor;
+    Color priorityBg;
+    switch (priority.toLowerCase()) {
+      case 'high':
+        priorityColor = const Color(0xFFDC2626); // Rose/Red
+        priorityBg = isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2);
+        break;
+      case 'low':
+        priorityColor = const Color(0xFF2563EB); // Royal Blue
+        priorityBg = isDark ? const Color(0xFF172554) : const Color(0xFFDBEAFE);
+        break;
+      case 'medium':
+      default:
+        priorityColor = const Color(0xFFD97706); // Amber
+        priorityBg = isDark ? const Color(0xFF3A2D1B) : const Color(0xFFFEF3C7);
+    }
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 20),
+      margin: const EdgeInsets.only(bottom: 16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(20),
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+          width: 1.0,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.28 : 0.08),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Gradient Strip
-          Container(
-            height: 6,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: _getStatusGradient(project.status),
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _isExpanded = !_isExpanded;
+          });
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status line highlight at the top (Image 3 card red/color line)
+            Container(
+              height: 4,
+              decoration: BoxDecoration(
+                color: statusColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
               ),
             ),
-          ),
-          
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Row: Status and Priority
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildStatusBadge(project.status, project.statusDisplay),
-                    _buildPriorityBadge(priority),
-                  ],
-                ),
-                
-                const SizedBox(height: 16),
-                
-                // Title
-                Text(
-                  project.title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A1A),
-                    letterSpacing: -0.5,
-                    height: 1.2,
+            
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Chips row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          // Status chip
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusBg,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              widget.project.statusDisplay.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: statusColor,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          // Priority chip
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: priorityBg,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              priority.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: priorityColor,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      // Details arrow navigation button
+                      GestureDetector(
+                        onTap: () => widget.onViewDetails(widget.project),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accent.withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                
-                // Description
-                if (project.description != null) ...[
-                  const SizedBox(height: 8),
+                  
+                  const SizedBox(height: 12),
+                  
+                  // Title
                   Text(
-                    project.description!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    widget.project.title,
                     style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                      height: 1.5,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? Colors.white : const Color(0xFF111827),
+                      letterSpacing: -0.3,
+                      height: 1.2,
                     ),
                   ),
-                ],
-                
-                const SizedBox(height: 20),
-                
-                // Info Row
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF5F7FA),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Row(
+                  
+                  // Description (Only show a snippet if exists)
+                  if (widget.project.description != null && widget.project.description!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.project.description!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Coordinator & Next Scheduled Visit sub-container (dashboard card styling)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            const CircleAvatar(
-                              radius: 12,
-                              backgroundColor: Colors.white,
-                              child: Icon(Icons.person, size: 14, color: AppColors.primary),
+                            Icon(
+                              Icons.person_rounded,
+                              size: 18,
+                              color: AppColors.accent,
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Coordinator',
-                                    style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                                  ),
-                                  Text(
-                                    project.coordinatorName ?? project.coordinatorUsername,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark ? Colors.white : const Color(0xFF333333),
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
+                            const SizedBox(width: 6),
+                            Text(
+                              widget.project.coordinatorName ?? widget.project.coordinatorUsername,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : const Color(0xFF111827),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      Container(width: 1, height: 24, color: Colors.grey[300]),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'Valuation visit',
-                            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.event_available, size: 14, color: Colors.grey[500]),
-                              const SizedBox(width: 4),
-                              Text(
-                                _formatNextVisitLine(project.nextScheduledVisit),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: isDark ? Colors.grey[200] : Colors.grey[800],
-                                  fontWeight: FontWeight.w600,
-                                ),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today_rounded,
+                              size: 16,
+                              color: AppColors.accent,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _formatNextVisitLine(widget.project.nextScheduledVisit),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? Colors.white : const Color(0xFF111827),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 20),
-                
-                // Actions
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 1,
-                      child: _buildActionButton(
-                        icon: Icons.info_outline_rounded,
-                        label: 'Details',
-                        color: Colors.grey[800]!,
-                        backgroundColor: Theme.of(context).cardColor,
-                        borderColor: isDark ? const Color(0xFF334155) : Colors.grey[300]!,
-                        onTap: () => onViewDetails(project),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 1,
-                      child: _buildActionButton(
-                        icon: Icons.assessment_outlined,
-                        label: 'Valuations',
-                        color: const Color(0xFF0D47A1),
-                        backgroundColor: const Color(0xFFE3F2FD),
-                        borderColor: Colors.transparent,
-                        onTap: () => onViewReports(project),
-                      ),
-                    ),
-                  ],
-                ),
-                if (onScheduleVisit != null) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => onScheduleVisit!(project),
-                      icon: const Icon(Icons.event_note_outlined, size: 18),
-                      label: const Text('Set valuation date'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0D47A1),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: Color(0xFF1976D2)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                  ),
-                ],
-                if (project.status == 'in_progress') ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => onCreateReport(project),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0D47A1),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: const BorderSide(color: Color(0xFF0D47A1)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.note_add_outlined, size: 18),
-                      label: const Text(
-                        'Create Report',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => onSubmit(project),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0D47A1),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Submit to Accessor',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Icon(Icons.arrow_forward_rounded, size: 18),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required Color backgroundColor,
-    required Color borderColor,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: borderColor),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, size: 22, color: color),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+                  // Collapsible Buttons Panel
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    child: _isExpanded
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 20),
+                              if (widget.project.status == 'in_progress') ...[
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: _buildSimpleButton(
+                                    context: context,
+                                    label: 'Create Report',
+                                    onTap: () => widget.onCreateReport(widget.project),
+                                    isPrimary: false,
+                                    isDark: isDark,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              
+                              // Submit to Accessor button
+                              SizedBox(
+                                width: double.infinity,
+                                child: _buildSimpleButton(
+                                  context: context,
+                                  label: 'Submit to Accessor',
+                                  onTap: () => widget.onSubmit(widget.project),
+                                  isPrimary: true,
+                                  isDark: isDark,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusBadge(String status, String display) {
-    Color color;
-    Color bg;
-    
-    switch (status) {
-      case 'pending':
-        color = const Color(0xFFF57C00);
-        bg = const Color(0xFFFFF3E0);
-        break;
-      case 'in_progress':
-        color = const Color(0xFF1976D2);
-        bg = const Color(0xFFE3F2FD);
-        break;
-      case 'completed':
-        color = const Color(0xFF388E3C);
-        bg = const Color(0xFFE8F5E9);
-        break;
-      case 'cancelled':
-        color = const Color(0xFFD32F2F);
-        bg = const Color(0xFFFFEBEE);
-        break;
-      default:
-        color = Colors.grey[700]!;
-        bg = Colors.grey[100]!;
-    }
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+  Widget _buildSimpleButton({
+    required BuildContext context,
+    required String label,
+    required VoidCallback onTap,
+    required bool isPrimary,
+    required bool isDark,
+  }) {
+    if (isPrimary) {
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.accent.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ElevatedButton(
+          onPressed: onTap,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            display,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPriorityBadge(String priority) {
-    Color color;
-
-    switch (priority.toLowerCase()) {
-      case 'high':
-        color = const Color(0xFF0D47A1);
-        break;
-      case 'low':
-        color = const Color(0xFF388E3C);
-        break;
-      case 'medium':
-      default:
-        color = const Color(0xFFF57C00);
-    }
-
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 90),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.flag_rounded, size: 14, color: color),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              priority.toUpperCase(),
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
+        ),
+      );
+    } else {
+      return ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
+          foregroundColor: isDark ? Colors.white : const Color(0xFF1F2937),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-        ],
-      ),
-    );
-  }
-
-  List<Color> _getStatusGradient(String status) {
-    switch (status) {
-      case 'pending':
-        return [const Color(0xFFFFA726), const Color(0xFFFB8C00)];
-      case 'in_progress':
-        return [const Color(0xFF42A5F5), const Color(0xFF1E88E5)];
-      case 'completed':
-        return [const Color(0xFF66BB6A), const Color(0xFF43A047)];
-      case 'cancelled':
-        return [const Color(0xFFEF5350), const Color(0xFFE53935)];
-      default:
-        return [Colors.grey[400]!, Colors.grey[600]!];
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
+          ),
+        ),
+      );
     }
   }
 }

@@ -3416,14 +3416,45 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
       if (token == null) return {'success': false, 'message': 'Not authenticated'};
-      final response = await http.get(
-        Uri.parse('$baseUrl/auth/profile/me/'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': jsonDecode(response.body)};
+      
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/auth/profile/me/'),
+          headers: {'Authorization': 'Bearer $token'},
+        ).timeout(const Duration(seconds: 3));
+        
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          // Cache the profile data locally
+          await prefs.setString('cached_user_profile', response.body);
+          return {'success': true, 'data': decoded};
+        }
+      } catch (e) {
+        print('Failed to fetch profile from server, trying cache fallback: $e');
       }
-      return {'success': false, 'message': 'Failed (${response.statusCode})'};
+      
+      // Fallback 1: Try local cache
+      final cachedProfileStr = prefs.getString('cached_user_profile');
+      if (cachedProfileStr != null) {
+        return {'success': true, 'data': jsonDecode(cachedProfileStr), 'is_cached': true};
+      }
+      
+      // Fallback 2: Construct default mock profile if no cache exists yet
+      final cachedUsername = prefs.getString('username') ?? 'field_officer';
+      final defaultProfile = {
+        'username': cachedUsername,
+        'first_name': 'Field',
+        'last_name': 'Officer',
+        'email': '$cachedUsername@auditra.com',
+        'profile': {
+          'phone': '',
+          'bio': 'Auditra Field Officer',
+          'profile_image_url': null,
+          'theme_preference': 'light',
+        }
+      };
+      
+      return {'success': true, 'data': defaultProfile, 'is_mock': true};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -3434,18 +3465,48 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
       if (token == null) return {'success': false, 'message': 'Not authenticated'};
-      final response = await http.patch(
-        Uri.parse('$baseUrl/auth/profile/me/'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(profileData),
-      );
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': jsonDecode(response.body)};
+      
+      // Instantly update the local cache so changes are shown immediately
+      final cachedStr = prefs.getString('cached_user_profile');
+      if (cachedStr != null) {
+        try {
+          final cached = jsonDecode(cachedStr) as Map<String, dynamic>;
+          final updatedProfile = {
+            ...(cached['profile'] as Map? ?? {}),
+            if (profileData.containsKey('phone')) 'phone': profileData['phone'],
+            if (profileData.containsKey('bio')) 'bio': profileData['bio'],
+          };
+          final updatedData = {
+            ...cached,
+            if (profileData.containsKey('first_name')) 'first_name': profileData['first_name'],
+            if (profileData.containsKey('last_name')) 'last_name': profileData['last_name'],
+            'profile': updatedProfile,
+          };
+          await prefs.setString('cached_user_profile', jsonEncode(updatedData));
+        } catch (_) {}
       }
-      return {'success': false, 'message': 'Update failed (${response.statusCode})'};
+
+      try {
+        final response = await http.patch(
+          Uri.parse('$baseUrl/auth/profile/me/'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(profileData),
+        ).timeout(const Duration(seconds: 3));
+        
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          await prefs.setString('cached_user_profile', response.body);
+          return {'success': true, 'data': decoded};
+        }
+      } catch (e) {
+        print('Offline: updated profile locally in cache: $e');
+        return {'success': true, 'message': 'Updated locally (offline)'};
+      }
+      
+      return {'success': false, 'message': 'Update failed'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }

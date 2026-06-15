@@ -1,0 +1,1639 @@
+﻿diff --git a/auditra/lib/screens/field_officer_dashboard.dart b/auditra/lib/screens/field_officer_dashboard.dart
+index 9eb4fcc..ad613de 100644
+--- a/auditra/lib/screens/field_officer_dashboard.dart
++++ b/auditra/lib/screens/field_officer_dashboard.dart
+@@ -52,7 +52,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+   // Project state
+   List<Project> _projects = [];     // All projects assigned to this field officer
+   bool _isLoadingProjects = false;
+-  late TabController _tabController; // Controls switching between the two tabs
++  int _currentIndex = 0;             // Current tab index for bottom navigation
++  String _searchQuery = '';
++  String _selectedStatusFilter = 'all'; // 'all', 'pending', 'in_progress', 'completed', 'cancelled'
+ 
+   // Timer for countdown
+   DateTime? _countdownEnd;          // Fixed to 5:00 PM today
+@@ -67,30 +69,23 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+   // ─── Lifecycle ────────────────────────────────────────────────────────────
+ 
+   /// Called once when the screen first opens.
+-  /// Sets up the tab bar, loads the user's info and projects,
+-  /// and starts listening for network changes.
++  /// Loads the user's info and projects, and starts listening for network changes.
+   @override
+   void initState() {
+     super.initState();
+-    _tabController = TabController(length: 2, vsync: this);
+-    _tabController.addListener(() {
+-      if (!_tabController.indexIsChanging) {
+-        setState(() {});
+-      }
+-    });
+     _loadUserInfo();
+     _loadCachedProjectsOnStartup();
+     _loadProjects();
++    _loadTodayAttendance();
++    _loadSummary();
+     _setupNetworkAutoRefresh();
+   }
+ 
+   /// Called when the screen is removed from the widget tree.
+-  /// Cancels the network listener and disposes the tab controller
+-  /// to free up memory and avoid memory leaks.
++  /// Cancels the network listener to free up memory and avoid memory leaks.
+   @override
+   void dispose() {
+     _networkSubscription?.cancel();
+-    _tabController.dispose();
+     super.dispose();
+   }
+ 
+@@ -803,7 +798,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+   // ─── Helpers ──────────────────────────────────────────────────────────────
+ 
+   /// Converts a [Duration] into a readable HH:MM:SS string.
+-  /// For example, 1 hour and 5 minutes becomes "01:05:00".
+   String _formatDuration(Duration duration) {
+     String twoDigits(int n) => n.toString().padLeft(2, '0');
+     final hours = twoDigits(duration.inHours);
+@@ -812,242 +806,501 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+     return '$hours:$minutes:$seconds';
+   }
+ 
+-  // ─── UI ───────────────────────────────────────────────────────────────────
+-
+-  /// Builds the main screen layout.
+-  /// Uses a [NestedScrollView] with a collapsible app bar that contains
+-  /// the welcome header and a two-tab bar (Profile & Attendance / Projects).
+   @override
+   Widget build(BuildContext context) {
+     final isDark = Theme.of(context).brightness == Brightness.dark;
+     return Scaffold(
+-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+-      body: NestedScrollView(
+-        headerSliverBuilder: (context, innerBoxIsScrolled) {
+-          return [
+-            SliverAppBar(
+-              expandedHeight: 180.0,
+-              floating: false,
+-              pinned: true,
+-              backgroundColor: const Color(0xFF0D47A1),
+-              flexibleSpace: FlexibleSpaceBar(
+-                titlePadding: const EdgeInsets.only(left: 16, bottom: 60),
+-                title: Column(
+-                  mainAxisSize: MainAxisSize.min,
+-                  crossAxisAlignment: CrossAxisAlignment.start,
+-                  mainAxisAlignment: MainAxisAlignment.end,
+-                  children: [
+-                    Text(
+-                      'Welcome back,',
+-                      style: TextStyle(
+-                        fontSize: 12,
+-                        color: Colors.blue[100],
+-                        fontWeight: FontWeight.normal,
+-                      ),
+-                    ),
+-                    Text(
+-                      _username ?? 'Field Officer',
+-                      style: const TextStyle(
+-                        fontSize: 20,
+-                        fontWeight: FontWeight.bold,
+-                        color: Colors.white,
+-                      ),
+-                    ),
+-                  ],
+-                ),
+-                background: Container(
+-                  decoration: const BoxDecoration(
+-                    gradient: LinearGradient(
+-                      colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+-                      begin: Alignment.topLeft,
+-                      end: Alignment.bottomRight,
++      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF9FAFB),
++      appBar: _buildAppBar(isDark),
++      body: SafeArea(
++        child: IndexedStack(
++          index: _currentIndex,
++          children: [
++            _buildDashboardTab(isDark),
++            _buildProjectsTab(isDark),
++            const ProfileScreen(showAppBar: false),
++          ],
++        ),
++      ),
++      bottomNavigationBar: _buildBottomNavigationBar(isDark),
++    );
++  }
++
++  PreferredSizeWidget _buildAppBar(bool isDark) {
++    String title = '';
++    List<Widget> actions = [const SyncStatusIndicator()];
++    
++    switch (_currentIndex) {
++      case 0:
++        title = 'Dashboard';
++        actions.add(
++          IconButton(
++            icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : Colors.black),
++            tooltip: 'Notifications',
++            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
++          ),
++        );
++        break;
++      case 1:
++        title = 'Projects';
++        actions.add(
++          IconButton(
++            icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : Colors.black),
++            tooltip: 'Notifications',
++            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
++          ),
++        );
++        break;
++      case 2:
++        title = 'My Profile';
++        actions.add(
++          IconButton(
++            icon: Icon(Icons.logout_rounded, color: isDark ? Colors.white : Colors.black),
++            tooltip: 'Logout',
++            onPressed: _logout,
++          ),
++        );
++        break;
++    }
++
++    return AppBar(
++      title: Text(
++        title,
++        style: TextStyle(
++          fontWeight: FontWeight.w900,
++          fontSize: 22,
++          color: isDark ? Colors.white : const Color(0xFF111827),
++          letterSpacing: -0.5,
++        ),
++      ),
++      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
++      elevation: 0,
++      centerTitle: false,
++      actions: actions,
++    );
++  }
++
++  Widget _buildBottomNavigationBar(bool isDark) {
++    return Container(
++      decoration: BoxDecoration(
++        color: isDark ? const Color(0xFF1E293B) : Colors.white,
++        boxShadow: [
++          BoxShadow(
++            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
++            blurRadius: 20,
++            offset: const Offset(0, -8),
++          ),
++        ],
++      ),
++      child: SafeArea(
++        child: Padding(
++          padding: const EdgeInsets.symmetric(vertical: 4),
++          child: BottomNavigationBar(
++            currentIndex: _currentIndex,
++            onTap: (index) {
++              setState(() {
++                _currentIndex = index;
++              });
++            },
++            backgroundColor: Colors.transparent,
++            elevation: 0,
++            type: BottomNavigationBarType.fixed,
++            selectedItemColor: AppColors.accent,
++            unselectedItemColor: isDark ? Colors.grey[500] : Colors.grey[400],
++            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: -0.2),
++            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: -0.2),
++            items: const [
++              BottomNavigationBarItem(
++                icon: Icon(Icons.grid_view_rounded, size: 22),
++                label: 'Dashboard',
++              ),
++              BottomNavigationBarItem(
++                icon: Icon(Icons.assignment_rounded, size: 22),
++                label: 'Projects',
++              ),
++              BottomNavigationBarItem(
++                icon: Icon(Icons.person_rounded, size: 22),
++                label: 'Profile',
++              ),
++            ],
++          ),
++        ),
++      ),
++    );
++  }
++
++  /// Builds the "Dashboard" tab (previously Profile & Attendance).
++  /// Shows today's attendance card, the attendance summary, and quick-action links.
++  /// Builds a calendar strip matching the clean, modern aesthetic of Image 2.
++  Widget _buildCalendarStrip(bool isDark) {
++    final now = DateTime.now();
++    // Anchor the calendar strip so today is in the middle (index 3)
++    final startOfStrip = now.subtract(const Duration(days: 3));
++    final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
++    
++    return Container(
++      margin: const EdgeInsets.symmetric(vertical: 8),
++      height: 90,
++      child: Row(
++        mainAxisAlignment: MainAxisAlignment.spaceBetween,
++        children: List.generate(7, (index) {
++          final dayDate = startOfStrip.add(Duration(days: index));
++          final isToday = dayDate.day == now.day && dayDate.month == now.month && dayDate.year == now.year;
++          // Dynamically resolve weekday name based on the date
++          final dayName = weekdays[dayDate.weekday - 1];
++          final dayNumber = dayDate.day.toString();
++          
++          return Expanded(
++            child: AnimatedContainer(
++              duration: const Duration(milliseconds: 300),
++              margin: const EdgeInsets.symmetric(horizontal: 4),
++              decoration: BoxDecoration(
++                color: isToday 
++                    ? AppColors.accent 
++                    : (isDark ? const Color(0xFF1E293B) : Colors.transparent),
++                borderRadius: BorderRadius.circular(20),
++                border: !isToday && !isDark
++                    ? Border.all(color: const Color(0xFFE5E7EB), width: 1)
++                    : null,
++                boxShadow: isToday
++                    ? [
++                        BoxShadow(
++                          color: AppColors.accent.withOpacity(0.35),
++                          blurRadius: 10,
++                          offset: const Offset(0, 4),
++                        )
++                      ]
++                    : null,
++              ),
++              child: Column(
++                mainAxisAlignment: MainAxisAlignment.center,
++                children: [
++                  Text(
++                    dayName,
++                    style: TextStyle(
++                      fontSize: 12,
++                      fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
++                      color: isToday 
++                          ? Colors.white 
++                          : (isDark ? Colors.grey[400] : const Color(0xFF6B7280)),
+                     ),
+                   ),
+-                  child: Stack(
+-                    children: [
+-                      Positioned(
+-                        right: -40,
+-                        top: -40,
+-                        child: Icon(
+-                          Icons.business_center_rounded,
+-                          color: Colors.white.withOpacity(0.08),
+-                          size: 200,
+-                        ),
+-                      ),
+-                    ],
++                  const SizedBox(height: 6),
++                  Text(
++                    dayNumber,
++                    style: TextStyle(
++                      fontSize: 16,
++                      fontWeight: FontWeight.w900,
++                      color: isToday 
++                          ? Colors.white 
++                          : (isDark ? Colors.white : const Color(0xFF111827)),
++                    ),
+                   ),
+-                ),
++                ],
++              ),
++            ),
++          );
++        }),
++      ),
++    );
++  }
++
++  /// Builds a modern quick action card with round border radius and a clean layout.
++  Widget _buildQuickActionCard({
++    required IconData icon,
++    required Color color,
++    required String title,
++    required VoidCallback onTap,
++    required bool isDark,
++  }) {
++    return Expanded(
++      child: InkWell(
++        onTap: onTap,
++        borderRadius: BorderRadius.circular(24),
++        child: Container(
++          padding: const EdgeInsets.all(18),
++          decoration: BoxDecoration(
++            color: isDark ? const Color(0xFF1E293B) : Colors.white,
++            borderRadius: BorderRadius.circular(24),
++            border: Border.all(
++              color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
++              width: 1,
++            ),
++            boxShadow: [
++              BoxShadow(
++                color: Colors.black.withOpacity(0.02),
++                blurRadius: 10,
++                offset: const Offset(0, 4),
+               ),
+-              actions: [
+-                const SyncStatusIndicator(),
+-                IconButton(
+-                  icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+-                  tooltip: 'Notifications',
+-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
++            ],
++          ),
++          child: Column(
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: [
++              Container(
++                padding: const EdgeInsets.all(10),
++                decoration: BoxDecoration(
++                  color: color.withOpacity(0.1),
++                  shape: BoxShape.circle,
+                 ),
+-                IconButton(
+-                  icon: const Icon(Icons.person_outline, color: Colors.white),
+-                  tooltip: 'Profile',
+-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
++                child: Icon(icon, color: color, size: 24),
++              ),
++              const SizedBox(height: 16),
++              Text(
++                title,
++                style: TextStyle(
++                  fontSize: 14,
++                  fontWeight: FontWeight.w800,
++                  color: isDark ? Colors.white : const Color(0xFF1F2937),
++                  letterSpacing: -0.2,
+                 ),
+-                IconButton(
+-                  icon: const Icon(Icons.logout, color: Colors.white),
+-                  onPressed: _logout,
+-                  tooltip: 'Logout',
++              ),
++              const SizedBox(height: 4),
++              Text(
++                'Manage settings',
++                style: TextStyle(
++                  fontSize: 11,
++                  color: Colors.grey[500],
+                 ),
+-              ],
+-              bottom: TabBar(
+-                controller: _tabController,
+-                indicatorColor: Colors.white,
+-                indicatorWeight: 3,
+-                labelColor: Colors.white,
+-                unselectedLabelColor: isDark ? Colors.blueGrey[100] : Colors.blue[100],
+-                labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+-                tabs: const [
+-                  Tab(text: 'Profile & Attendance'),
+-                  Tab(text: 'Projects'),
+-                ],
+               ),
+-            ),
+-          ];
+-        },
+-        body: TabBarView(
+-          controller: _tabController,
+-          children: [
+-            _buildProfileTab(),
+-            _buildProjectsTab(),
+-          ],
++            ],
++          ),
+         ),
+       ),
+     );
+   }
+ 
+-  /// Builds the "Profile & Attendance" tab.
+-  /// Shows today's attendance card, the attendance summary, and quick-action links
+-  /// (Change Password, Payment Slips).
+-  Widget _buildProfileTab() {
++  /// Builds the "Dashboard" tab (previously Profile & Attendance).
++  /// Shows today's attendance card, the attendance summary, and quick-action links.
++  Widget _buildDashboardTab(bool isDark) {
+     return SingleChildScrollView(
+-      padding: const EdgeInsets.all(20),
++      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.stretch,
+         children: [
+-          // Today's Attendance
+-          _buildTodayAttendanceCard(),
+-          const SizedBox(height: 20),
+-          
+-          // Summary
+-          _buildSummarySection(),
+-          const SizedBox(height: 20),
+-          
+-          // Quick Actions
+-          Card(
+-            elevation: 0,
+-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+-            color: Theme.of(context).cardColor,
+-            child: Padding(
+-              padding: const EdgeInsets.all(16),
+-              child: Column(
++          // Hello Welcome section matching Image 2
++          Row(
++            mainAxisAlignment: MainAxisAlignment.spaceBetween,
++            children: [
++              Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+-                  const Text(
+-                    'Quick Actions',
+-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+-                  ),
+-                  const SizedBox(height: 12),
+-                  _buildQuickActionTile(
+-                    icon: Icons.lock_reset_rounded,
+-                    color: Colors.orange,
+-                    title: 'Change Password',
+-                    onTap: () {
+-                      Navigator.of(context).push(
+-                        MaterialPageRoute(
+-                          builder: (_) => const ChangePasswordScreen(),
+-                        ),
+-                      );
+-                    },
++                  Text(
++                    'Hello',
++                    style: TextStyle(
++                      fontSize: 16,
++                      fontWeight: FontWeight.w500,
++                      color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
++                    ),
+                   ),
+-                  const Divider(),
+-                  _buildQuickActionTile(
+-                    icon: Icons.receipt_long_rounded,
+-                    color: Colors.green,
+-                    title: 'Payment Slips',
+-                    onTap: () {
+-                      Navigator.of(context).push(
+-                        MaterialPageRoute(
+-                          builder: (_) => const PaymentSlipsScreen(),
+-                        ),
+-                      );
+-                    },
++                  Text(
++                    _username ?? 'Officer',
++                    style: TextStyle(
++                      fontSize: 26,
++                      fontWeight: FontWeight.w900,
++                      color: isDark ? Colors.white : const Color(0xFF111827),
++                      letterSpacing: -0.5,
++                    ),
+                   ),
+                 ],
+               ),
++            ],
++          ),
++          const SizedBox(height: 16),
++
++          // Calendar strip
++          _buildCalendarStrip(isDark),
++          const SizedBox(height: 20),
++
++          // Today's Attendance
++          _buildTodayAttendanceCard(),
++          const SizedBox(height: 24),
++          
++          // Summary
++          _buildSummarySection(),
++          const SizedBox(height: 24),
++          
++          // Quick Actions title
++          const Text(
++            'Quick Actions',
++            style: TextStyle(
++              fontSize: 16, 
++              fontWeight: FontWeight.bold,
++              letterSpacing: -0.3,
+             ),
+           ),
++          const SizedBox(height: 12),
++          
++          // Row of Quick Action cards
++          Row(
++            children: [
++              _buildQuickActionCard(
++                icon: Icons.lock_reset_rounded,
++                color: AppColors.accent,
++                title: 'Change Password',
++                onTap: () {
++                  Navigator.of(context).push(
++                    MaterialPageRoute(
++                      builder: (_) => const ChangePasswordScreen(),
++                    ),
++                  );
++                },
++                isDark: isDark,
++              ),
++              const SizedBox(width: 12),
++              _buildQuickActionCard(
++                icon: Icons.receipt_long_rounded,
++                color: Colors.blue,
++                title: 'Payment Slips',
++                onTap: () {
++                  Navigator.of(context).push(
++                    MaterialPageRoute(
++                      builder: (_) => const PaymentSlipsScreen(),
++                    ),
++                  );
++                },
++                isDark: isDark,
++              ),
++            ],
++          ),
+           const SizedBox(height: 30),
+         ],
+       ),
+     );
+   }
+-  
+-  /// Builds a single tappable row in the Quick Actions section.
+-  /// Shows a coloured icon on the left, a title in the middle, and an arrow on the right.
+-  Widget _buildQuickActionTile({
+-    required IconData icon,
+-    required Color color,
+-    required String title,
+-    required VoidCallback onTap,
+-  }) {
+-    return ListTile(
+-      contentPadding: EdgeInsets.zero,
+-      leading: Container(
+-        padding: const EdgeInsets.all(10),
+-        decoration: BoxDecoration(
+-          color: color.withOpacity(0.1),
+-          borderRadius: BorderRadius.circular(12),
++
++  /// Builds the "Projects" tab.
++  /// Shows a search bar, filter chips, and a scrollable list of project cards.
++  Widget _buildProjectsTab(bool isDark) {
++    // Dynamic counts for chips
++    final allCount = _projects.length;
++    final pendingCount = _projects.where((p) => p.status == 'pending').length;
++    final progressCount = _projects.where((p) => p.status == 'in_progress').length;
++    final completedCount = _projects.where((p) => p.status == 'completed').length;
++    final cancelledCount = _projects.where((p) => p.status == 'cancelled').length;
++
++    // Filter projects locally based on search query and status filter
++    final filtered = _projects.where((p) {
++      final matchesSearch = p.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
++          (p.description ?? '').toLowerCase().contains(_searchQuery.toLowerCase());
++      final matchesStatus = _selectedStatusFilter == 'all' || p.status == _selectedStatusFilter;
++      return matchesSearch && matchesStatus;
++    }).toList();
++
++    return Column(
++      children: [
++        // Search Bar (Image 3 style)
++        Padding(
++          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
++          child: Container(
++            decoration: BoxDecoration(
++              color: isDark ? const Color(0xFF1E293B) : Colors.white,
++              borderRadius: BorderRadius.circular(12),
++              border: Border.all(
++                color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
++              ),
++            ),
++            child: TextField(
++              onChanged: (val) {
++                setState(() {
++                  _searchQuery = val;
++                });
++              },
++              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827)),
++              decoration: InputDecoration(
++                hintText: 'Search projects by location or ID...',
++                hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
++                prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 20),
++                border: InputBorder.none,
++                enabledBorder: InputBorder.none,
++                focusedBorder: InputBorder.none,
++                contentPadding: const EdgeInsets.symmetric(vertical: 12),
++              ),
++            ),
++          ),
+         ),
+-        child: Icon(icon, color: color, size: 22),
+-      ),
+-      title: Text(
+-        title, 
+-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+-      ),
+-      trailing: Icon(Icons.chevron_right_rounded, color: Colors.grey[400]),
+-      onTap: onTap,
++
++        // Horizontal scrollable filter chips (Image 3 style)
++        SingleChildScrollView(
++          scrollDirection: Axis.horizontal,
++          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 12),
++          child: Row(
++            children: [
++              _buildFilterChip('all', 'All ($allCount)'),
++              const SizedBox(width: 8),
++              _buildFilterChip('pending', 'Pending ($pendingCount)'),
++              const SizedBox(width: 8),
++              _buildFilterChip('in_progress', 'In Progress ($progressCount)'),
++              const SizedBox(width: 8),
++              _buildFilterChip('completed', 'Completed ($completedCount)'),
++              const SizedBox(width: 8),
++              _buildFilterChip('cancelled', 'Cancelled ($cancelledCount)'),
++            ],
++          ),
++        ),
++
++        // Projects list or empty state
++        Expanded(
++          child: RefreshIndicator(
++            onRefresh: _loadProjects,
++            child: _isLoadingProjects
++                ? const Center(child: CircularProgressIndicator())
++                : filtered.isEmpty
++                    ? _buildEmptyProjectsState()
++                    : ListView.builder(
++                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 80),
++                        itemCount: filtered.length,
++                        itemBuilder: (context, index) {
++                          final project = filtered[index];
++                          return FieldOfficerProjectCard(
++                            project: project,
++                            onViewDetails: _viewProjectDetails,
++                            onViewReports: _viewValuationReports,
++                            onCreateReport: _createReport,
++                            onSubmit: _submitToAccessor,
++                            onScheduleVisit: _openValuationSchedule,
++                          );
++                        },
++                      ),
++          ),
++        ),
++      ],
+     );
+   }
+ 
+-  /// Builds the "Projects" tab.
+-  /// Shows a pull-to-refresh scrollable list of project cards.
+-  /// Each card has buttons to view reports, create reports, submit, and schedule visits.
+-  /// Displays a friendly empty state if no projects are assigned yet.
+-  Widget _buildProjectsTab() {
+-    return RefreshIndicator(
+-      onRefresh: _loadProjects,
+-      child: _isLoadingProjects
+-          ? const Center(child: CircularProgressIndicator())
+-          : _projects.isEmpty
+-              ? _buildEmptyProjectsState()
+-              : ListView.builder(
+-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 80),
+-                  itemCount: _projects.length,
+-                  itemBuilder: (context, index) {
+-                    final project = _projects[index];
+-                    return FieldOfficerProjectCard(
+-                      project: project,
+-                      onViewDetails: _viewProjectDetails,
+-                      onViewReports: _viewValuationReports,
+-                      onCreateReport: _createReport,
+-                      onSubmit: _submitToAccessor,
+-                      onScheduleVisit: _openValuationSchedule,
+-                    );
+-                  },
+-                ),
++  Widget _buildFilterChip(String filterVal, String label) {
++    final isSelected = _selectedStatusFilter == filterVal;
++    final isDark = Theme.of(context).brightness == Brightness.dark;
++
++    return GestureDetector(
++      onTap: () {
++        setState(() {
++          _selectedStatusFilter = filterVal;
++        });
++      },
++      child: Container(
++        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
++        decoration: BoxDecoration(
++          color: isSelected 
++              ? AppColors.accent // light blue variants
++              : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF3F4F6)),
++          borderRadius: BorderRadius.circular(20),
++        ),
++        child: Text(
++          label,
++          style: TextStyle(
++            color: isSelected ? Colors.white : (isDark ? Colors.grey[300] : const Color(0xFF4B5563)),
++            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
++            fontSize: 13,
++          ),
++        ),
++      ),
+     );
+   }
+   
+-  /// Builds the empty state shown in the Projects tab when no projects
+-  /// have been assigned to the field officer yet.
++  /// Builds the empty state shown in the Projects tab.
+   Widget _buildEmptyProjectsState() {
++    final hasNoAssignments = _projects.isEmpty;
+     return Center(
+       child: Column(
+         mainAxisAlignment: MainAxisAlignment.center,
+@@ -1055,7 +1308,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+           Icon(Icons.folder_open_rounded, size: 80, color: Colors.grey[300]),
+           const SizedBox(height: 20),
+           Text(
+-            'No projects assigned',
++            hasNoAssignments ? 'No projects assigned' : 'No projects found',
+             style: TextStyle(
+               fontSize: 20,
+               fontWeight: FontWeight.bold,
+@@ -1064,7 +1317,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+           ),
+           const SizedBox(height: 8),
+           Text(
+-            'Any projects assigned to you\nwill appear here automatically.',
++            hasNoAssignments 
++                ? 'Any projects assigned to you\nwill appear here automatically.'
++                : 'Change your search query or status filter\nor pull to refresh live data.',
+             textAlign: TextAlign.center,
+             style: TextStyle(color: Colors.grey[500], height: 1.5),
+           ),
+@@ -1219,9 +1474,23 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+   ///   - Checked in but not out → shows the countdown timer + "Leave Early" button.
+   ///   - Checked out → shows check-in/out times, working hours, and overtime controls.
+   Widget _buildTodayAttendanceCard() {
+-    return Card(
+-      elevation: 4,
+-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
++    final isDark = Theme.of(context).brightness == Brightness.dark;
++    return Container(
++      decoration: BoxDecoration(
++        color: isDark ? const Color(0xFF1E293B) : Colors.white,
++        borderRadius: BorderRadius.circular(24),
++        border: Border.all(
++          color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
++          width: 1,
++        ),
++        boxShadow: [
++          BoxShadow(
++            color: Colors.black.withOpacity(0.02),
++            blurRadius: 10,
++            offset: const Offset(0, 4),
++          ),
++        ],
++      ),
+       child: Padding(
+         padding: const EdgeInsets.all(20.0),
+         child: Column(
+@@ -1229,37 +1498,50 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+           children: [
+             Text(
+               'Today\'s Attendance',
+-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+-                fontWeight: FontWeight.bold,
++              style: TextStyle(
++                fontSize: 18,
++                fontWeight: FontWeight.w900,
++                color: isDark ? Colors.white : const Color(0xFF111827),
++                letterSpacing: -0.3,
+               ),
+             ),
+             const SizedBox(height: 16),
+             
+             if (!_isWorkingDay)
+               Container(
+-                padding: const EdgeInsets.all(12),
++                padding: const EdgeInsets.all(14),
+                 decoration: BoxDecoration(
+-                  color: Colors.orange[100],
+-                  borderRadius: BorderRadius.circular(8),
++                  color: isDark ? const Color(0xFF3B2E1E) : const Color(0xFFFFFBEB),
++                  borderRadius: BorderRadius.circular(20),
++                  border: Border.all(color: isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A)),
+                 ),
+-                child: const Text(
+-                  'Today is not a working day (Sunday or Holiday)',
+-                  style: TextStyle(fontWeight: FontWeight.w500),
++                child: Row(
++                  children: [
++                    Icon(Icons.info_outline_rounded, color: isDark ? Colors.amber[400] : Colors.orange[700], size: 20),
++                    const SizedBox(width: 8),
++                    Expanded(
++                      child: Text(
++                        'Today is not a working day (Sunday or Holiday)',
++                        style: TextStyle(
++                          color: isDark ? Colors.amber[200] : Colors.orange[900],
++                          fontWeight: FontWeight.w600,
++                          fontSize: 13,
++                        ),
++                      ),
++                    ),
++                  ],
+                 ),
+               )
+             else if (_todayAttendance == null)
+               Column(
+                 children: [
+-                  // Countdown Timer and Attendance Button Row
+                   Row(
+                     children: [
+-                      // Animated Countdown Timer
+                       Expanded(
+                         flex: 2,
+                         child: _buildAnimatedCountdown(),
+                       ),
+                       const SizedBox(width: 12),
+-                      // Attendance Button
+                       Expanded(
+                         flex: 3,
+                         child: _buildAttendanceButton(),
+@@ -1267,25 +1549,24 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                     ],
+                   ),
+                   const SizedBox(height: 16),
+-                  // Working Hours Info Card
+                   Container(
+                     padding: const EdgeInsets.all(16),
+                     decoration: BoxDecoration(
+-                      color: Colors.blue[50],
+-                      borderRadius: BorderRadius.circular(12),
+-                      border: Border.all(color: Colors.blue[200]!),
++                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
++                      borderRadius: BorderRadius.circular(20),
++                      border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE)),
+                     ),
+                     child: Row(
+                       mainAxisAlignment: MainAxisAlignment.center,
+                       children: [
+-                        Icon(Icons.access_time, color: Colors.blue[700], size: 20),
++                        Icon(Icons.access_time_rounded, color: AppColors.accent, size: 20),
+                         const SizedBox(width: 8),
+                         Text(
+                           'Working Hours: 8:00 AM - 5:00 PM',
+                           style: TextStyle(
+-                            color: Colors.blue[900],
++                            color: isDark ? Colors.blue[300] : const Color(0xFF1E40AF),
+                             fontSize: 14,
+-                            fontWeight: FontWeight.w600,
++                            fontWeight: FontWeight.w700,
+                           ),
+                         ),
+                       ],
+@@ -1296,16 +1577,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+             else if (_todayAttendance != null && !_todayAttendance!.isCheckedOut)
+               Column(
+                 children: [
+-                  // Countdown Timer and Leave Early Button Row
+                   Row(
+                     children: [
+-                      // Animated Countdown Timer
+                       Expanded(
+                         flex: 2,
+                         child: _buildAnimatedCountdown(),
+                       ),
+                       const SizedBox(width: 12),
+-                      // Leave Early Button
+                       Expanded(
+                         flex: 3,
+                         child: _buildLeaveEarlyButton(),
+@@ -1317,130 +1595,165 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+             else
+               Column(
+                 children: [
+-                  // Status
+                   Row(
+                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                     children: [
+-                      Text('Status:', style: TextStyle(fontWeight: FontWeight.w500)),
+-                      Chip(
+-                        label: Text(_todayAttendance!.statusDisplay),
+-                        backgroundColor: _getStatusColor(_todayAttendance!.status),
++                      const Text(
++                        'Status:',
++                        style: TextStyle(
++                          fontWeight: FontWeight.w700,
++                          fontSize: 14,
++                          color: Colors.grey,
++                        ),
++                      ),
++                      Container(
++                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
++                        decoration: BoxDecoration(
++                          color: _getStatusColor(_todayAttendance!.status).withOpacity(0.1),
++                          borderRadius: BorderRadius.circular(20),
++                          border: Border.all(color: _getStatusColor(_todayAttendance!.status).withOpacity(0.3)),
++                        ),
++                        child: Text(
++                          _todayAttendance!.statusDisplay,
++                          style: TextStyle(
++                            fontWeight: FontWeight.w800,
++                            color: _getStatusColor(_todayAttendance!.status),
++                            fontSize: 12,
++                          ),
++                        ),
+                       ),
+                     ],
+                   ),
+-                  const SizedBox(height: 12),
++                  const SizedBox(height: 14),
+                   
+-                  // Check-in time
+-                  if (_todayAttendance!.checkIn != null)
++                  if (_todayAttendance!.checkIn != null) ...[
+                     Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+-                        const Text('Check-in:', style: TextStyle(fontWeight: FontWeight.w500)),
+-                        Text(DateFormat('hh:mm a').format(_todayAttendance!.checkIn!)),
++                        const Text('Check-in:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
++                        Text(
++                          DateFormat('hh:mm a').format(_todayAttendance!.checkIn!),
++                          style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF111827)),
++                        ),
+                       ],
+                     ),
++                    const SizedBox(height: 10),
++                  ],
+                   
+-                  // Countdown timer
+                   if (_todayAttendance!.isCheckedIn && !_todayAttendance!.isCheckedOut) ...[
+-                const SizedBox(height: 16),
+-                Container(
+-                  padding: const EdgeInsets.all(16),
+-                  decoration: BoxDecoration(
+-                    color: Colors.blue[50],
+-                    borderRadius: BorderRadius.circular(12),
+-                  ),
+-                  child: Column(
+-                    children: [
+-                      const Text(
+-                        'Time Remaining',
+-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+-                      ),
+-                      const SizedBox(height: 8),
+-                      Text(
+-                        _formatDuration(_remainingTime),
+-                        style: const TextStyle(
+-                          fontSize: 32,
+-                          fontWeight: FontWeight.bold,
+-                          color: Colors.blue,
+-                        ),
++                    const SizedBox(height: 12),
++                    Container(
++                      padding: const EdgeInsets.all(16),
++                      decoration: BoxDecoration(
++                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
++                        borderRadius: BorderRadius.circular(20),
++                        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE)),
+                       ),
+-                      const SizedBox(height: 8),
+-                      Text(
+-                        'Until 5:00 PM',
+-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
++                      child: Column(
++                        children: [
++                          const Text(
++                            'Time Remaining',
++                            style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
++                          ),
++                          const SizedBox(height: 8),
++                          Text(
++                            _formatDuration(_remainingTime),
++                            style: TextStyle(
++                              fontSize: 32,
++                              fontWeight: FontWeight.w900,
++                              color: AppColors.accent,
++                              letterSpacing: 1.0,
++                            ),
++                          ),
++                          const SizedBox(height: 8),
++                          const Text(
++                            'Until 5:00 PM',
++                            style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
++                          ),
++                        ],
+                       ),
+-                    ],
+-                  ),
+-                ),
++                    ),
+                     const SizedBox(height: 16),
+                     
+-                    // Leave Early Button
+                     OutlinedButton.icon(
+                       onPressed: _leaveEarly,
+-                      icon: const Icon(Icons.exit_to_app),
++                      icon: const Icon(Icons.exit_to_app_rounded),
+                       label: const Text('Leave Early'),
+                       style: OutlinedButton.styleFrom(
+-                        padding: const EdgeInsets.symmetric(vertical: 12),
++                        padding: const EdgeInsets.symmetric(vertical: 14),
++                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                       ),
+                     ),
+                     const SizedBox(height: 8),
+                     
+-                    // Check Out Button (if after 5 PM or close to it)
+                     if (DateTime.now().hour >= 17 || _remainingTime.inMinutes < 5)
+                       ElevatedButton.icon(
+                         onPressed: _checkOut,
+-                        icon: const Icon(Icons.logout),
++                        icon: const Icon(Icons.logout_rounded),
+                         label: const Text('Check Out'),
+                         style: ElevatedButton.styleFrom(
+-                          padding: const EdgeInsets.symmetric(vertical: 12),
+-                          backgroundColor: Colors.blue,
++                          padding: const EdgeInsets.symmetric(vertical: 14),
++                          backgroundColor: AppColors.accent,
+                           foregroundColor: Colors.white,
++                          elevation: 0,
++                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                         ),
+                       ),
+                   ],
+                   
+-                  // Check-out time
+                   if (_todayAttendance!.checkOut != null) ...[
+                     Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+-                        const Text('Check-out:', style: TextStyle(fontWeight: FontWeight.w500)),
+-                        Text(DateFormat('hh:mm a').format(_todayAttendance!.checkOut!)),
++                        const Text('Check-out:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
++                        Text(
++                          DateFormat('hh:mm a').format(_todayAttendance!.checkOut!),
++                          style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF111827)),
++                        ),
+                       ],
+                     ),
+-                    const SizedBox(height: 8),
++                    const SizedBox(height: 10),
+                     Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+-                        const Text('Working Hours:', style: TextStyle(fontWeight: FontWeight.w500)),
+-                        Text('${_todayAttendance!.workingHours.toStringAsFixed(1)} hrs'),
++                        const Text('Working Hours:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
++                        Text(
++                          '${_todayAttendance!.workingHours.toStringAsFixed(1)} hrs',
++                          style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF111827)),
++                        ),
+                       ],
+                     ),
+                   ],
+                   
+-                  // Overtime Section
+                   if (_todayAttendance!.isCheckedOut) ...[
+-                    const Divider(),
+-                    const SizedBox(height: 8),
++                    const Padding(
++                      padding: EdgeInsets.symmetric(vertical: 8.0),
++                      child: Divider(),
++                    ),
+                     if (_todayAttendance!.overtimeStart == null && DateTime.now().hour >= 17)
+                       _buildStartOvertimeButton()
+                     else if (_todayAttendance!.isOvertimeActive) ...[
+                       Row(
+                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                         children: [
+-                          const Text('Overtime Started:', style: TextStyle(fontWeight: FontWeight.w500)),
+-                          Text(DateFormat('hh:mm a').format(_todayAttendance!.overtimeStart!)),
++                          const Text('Overtime Started:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
++                          Text(
++                            DateFormat('hh:mm a').format(_todayAttendance!.overtimeStart!),
++                            style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF111827)),
++                          ),
+                         ],
+                       ),
+                       const SizedBox(height: 12),
+                       ElevatedButton.icon(
+                         onPressed: _endOvertime,
+-                        icon: const Icon(Icons.stop),
++                        icon: const Icon(Icons.stop_rounded),
+                         label: const Text('End Overtime'),
+                         style: ElevatedButton.styleFrom(
+-                          padding: const EdgeInsets.symmetric(vertical: 12),
+-                          backgroundColor: Colors.red,
++                          padding: const EdgeInsets.symmetric(vertical: 14),
++                          backgroundColor: Colors.red[500],
+                           foregroundColor: Colors.white,
++                          elevation: 0,
++                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                         ),
+                       ),
+                     ]
+@@ -1448,8 +1761,11 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                       Row(
+                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                         children: [
+-                          const Text('Overtime Hours:', style: TextStyle(fontWeight: FontWeight.w500)),
+-                          Text('${_todayAttendance!.overtimeHours.toStringAsFixed(1)} hrs'),
++                          const Text('Overtime Hours:', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
++                          Text(
++                            '${_todayAttendance!.overtimeHours.toStringAsFixed(1)} hrs',
++                            style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF111827)),
++                          ),
+                         ],
+                       ),
+                     ],
+@@ -1466,11 +1782,25 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+   /// absent days, working hours, and overtime for the selected period.
+   /// The user can switch between Daily, Weekly, Monthly, and Yearly views.
+   Widget _buildSummarySection() {
+-    return Card(
+-      elevation: 2,
+-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
++    final isDark = Theme.of(context).brightness == Brightness.dark;
++    return Container(
++      decoration: BoxDecoration(
++        color: isDark ? const Color(0xFF1E293B) : Colors.white,
++        borderRadius: BorderRadius.circular(24),
++        border: Border.all(
++          color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
++          width: 1,
++        ),
++        boxShadow: [
++          BoxShadow(
++            color: Colors.black.withOpacity(0.02),
++            blurRadius: 10,
++            offset: const Offset(0, 4),
++          ),
++        ],
++      ),
+       child: Padding(
+-        padding: const EdgeInsets.all(16.0),
++        padding: const EdgeInsets.all(20.0),
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.stretch,
+           children: [
+@@ -1479,28 +1809,69 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+               children: [
+                 Text(
+                   'Attendance Summary',
+-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+-                    fontWeight: FontWeight.bold,
++                  style: TextStyle(
++                    fontSize: 16,
++                    fontWeight: FontWeight.w900,
++                    color: isDark ? Colors.white : const Color(0xFF111827),
++                    letterSpacing: -0.3,
+                   ),
+                 ),
+-                DropdownButton<String>(
+-                  value: _selectedPeriod,
+-                  items: const [
+-                    DropdownMenuItem(value: 'daily', child: Text('Daily')),
+-                    DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+-                    DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+-                    DropdownMenuItem(value: 'yearly', child: Text('Yearly')),
+-                  ],
+-                  onChanged: (value) {
+-                    if (value != null) {
++                Theme(
++                  data: Theme.of(context).copyWith(
++                    hoverColor: Colors.transparent,
++                    splashColor: Colors.transparent,
++                    highlightColor: Colors.transparent,
++                  ),
++                  child: PopupMenuButton<String>(
++                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
++                    offset: const Offset(0, 40),
++                    constraints: const BoxConstraints(
++                      minWidth: 120,
++                      maxWidth: 120,
++                    ),
++                    elevation: 4,
++                    color: isDark ? const Color(0xFF1E293B) : Colors.white,
++                    onSelected: (value) {
+                       setState(() => _selectedPeriod = value);
+                       _loadSummary();
+-                    }
+-                  },
++                    },
++                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
++                      _buildPopupMenuItem('daily', 'Daily', _selectedPeriod == 'daily', isDark),
++                      _buildPopupMenuItem('weekly', 'Weekly', _selectedPeriod == 'weekly', isDark),
++                      _buildPopupMenuItem('monthly', 'Monthly', _selectedPeriod == 'monthly', isDark),
++                      _buildPopupMenuItem('yearly', 'Yearly', _selectedPeriod == 'yearly', isDark),
++                    ],
++                    child: Container(
++                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
++                      decoration: BoxDecoration(
++                        color: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
++                        borderRadius: BorderRadius.circular(16),
++                      ),
++                      child: Row(
++                        mainAxisSize: MainAxisSize.min,
++                        children: [
++                          Text(
++                            _selectedPeriod.substring(0, 1).toUpperCase() + _selectedPeriod.substring(1),
++                            style: TextStyle(
++                              color: isDark ? Colors.white : const Color(0xFF111827),
++                              fontWeight: FontWeight.w800,
++                              fontSize: 13,
++                            ),
++                          ),
++                          const SizedBox(width: 4),
++                          Icon(
++                            Icons.keyboard_arrow_down_rounded,
++                            color: isDark ? Colors.white70 : Colors.black54,
++                            size: 18,
++                          ),
++                        ],
++                      ),
++                    ),
++                  ),
+                 ),
+               ],
+             ),
+-            const SizedBox(height: 16),
++            const SizedBox(height: 20),
+             
+             if (_isLoadingSummary)
+               const Center(child: CircularProgressIndicator())
+@@ -1516,17 +1887,17 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                           Colors.green,
+                         ),
+                       ),
+-                      const SizedBox(width: 8),
++                      const SizedBox(width: 10),
+                       Expanded(
+                         child: _buildSummaryCard(
+                           'Half Day',
+                           _summary!.halfDays.toString(),
+-                          Colors.orange,
++                          Colors.lightBlue,
+                         ),
+                       ),
+                     ],
+                   ),
+-                  const SizedBox(height: 8),
++                  const SizedBox(height: 10),
+                   Row(
+                     children: [
+                       Expanded(
+@@ -1536,7 +1907,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                           Colors.red,
+                         ),
+                       ),
+-                      const SizedBox(width: 8),
++                      const SizedBox(width: 10),
+                       Expanded(
+                         child: _buildSummaryCard(
+                           'Attendance %',
+@@ -1546,17 +1917,17 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                       ),
+                     ],
+                   ),
+-                  const SizedBox(height: 12),
++                  const SizedBox(height: 10),
+                   Row(
+                     children: [
+                       Expanded(
+                         child: _buildSummaryCard(
+                           'Working Hours',
+                           '${_summary!.totalWorkingHours.toStringAsFixed(1)}h',
+-                          Colors.purple,
++                          Colors.indigo,
+                         ),
+                       ),
+-                      const SizedBox(width: 8),
++                      const SizedBox(width: 10),
+                       Expanded(
+                         child: _buildSummaryCard(
+                           'Overtime',
+@@ -1569,39 +1940,85 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                 ],
+               )
+             else
+-              const Center(child: Text('No data available')),
++              const Center(child: Padding(
++                padding: EdgeInsets.symmetric(vertical: 20.0),
++                child: Text('No data available', style: TextStyle(color: Colors.grey)),
++              )),
++          ],
++        ),
++      ),
++    );
++  }
++
++  PopupMenuItem<String> _buildPopupMenuItem(
++    String value,
++    String title,
++    bool isSelected,
++    bool isDark,
++  ) {
++    return PopupMenuItem<String>(
++      value: value,
++      height: 40,
++      padding: const EdgeInsets.symmetric(horizontal: 8),
++      child: Container(
++        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
++        decoration: BoxDecoration(
++          color: isSelected 
++              ? AppColors.accent.withOpacity(0.08) 
++              : Colors.transparent,
++          borderRadius: BorderRadius.circular(12),
++        ),
++        child: Row(
++          mainAxisAlignment: MainAxisAlignment.spaceBetween,
++          children: [
++            Text(
++              title,
++              style: TextStyle(
++                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
++                color: isSelected 
++                    ? AppColors.accent 
++                    : (isDark ? Colors.white : const Color(0xFF111827)),
++                fontSize: 13,
++              ),
++            ),
++            if (isSelected)
++              Icon(Icons.check_rounded, color: AppColors.accent, size: 16),
+           ],
+         ),
+       ),
+     );
+   }
+ 
+-  /// Builds a single coloured stat tile used inside the attendance summary.
+-  /// Shows a [value] (e.g. "15") above a [title] label (e.g. "Present").
+   Widget _buildSummaryCard(String title, String value, Color color) {
++    final isDark = Theme.of(context).brightness == Brightness.dark;
+     return Container(
+-      padding: const EdgeInsets.all(12),
++      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+       decoration: BoxDecoration(
+-        color: color.withOpacity(0.1),
+-        borderRadius: BorderRadius.circular(8),
+-        border: Border.all(color: color.withOpacity(0.3)),
++        color: isDark ? const Color(0xFF0F172A) : color.withOpacity(0.06),
++        borderRadius: BorderRadius.circular(20),
++        border: Border.all(
++          color: isDark ? const Color(0xFF334155) : color.withOpacity(0.15),
++          width: 1.5,
++        ),
+       ),
+       child: Column(
+         children: [
+           Text(
+             value,
+             style: TextStyle(
+-              fontSize: 20,
+-              fontWeight: FontWeight.bold,
+-              color: color,
++              fontSize: 22,
++              fontWeight: FontWeight.w900,
++              color: isDark ? Colors.white : color,
++              letterSpacing: -0.5,
+             ),
+           ),
+-          const SizedBox(height: 4),
++          const SizedBox(height: 6),
+           Text(
+             title,
+             style: TextStyle(
+               fontSize: 12,
+-              color: Colors.grey[600],
++              fontWeight: FontWeight.w600,
++              color: isDark ? Colors.grey[400] : Colors.grey[600],
+             ),
+             textAlign: TextAlign.center,
+           ),
+@@ -1633,7 +2050,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+   Widget _buildAnimatedCountdown() {
+     final now = DateTime.now();
+     final isAfter5PM = now.isAfter(_countdownEnd ?? now);
+-    final isNearEnd = _remainingTime.inHours < 1;
++    final isNearEnd = _countdownEnd != null && _remainingTime.inHours < 1;
+     
+     return TweenAnimationBuilder<double>(
+       tween: Tween(begin: 0.0, end: 1.0),
+@@ -1646,55 +2063,48 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+             decoration: BoxDecoration(
+               gradient: LinearGradient(
+                 colors: isAfter5PM
+-                    ? [Colors.red[300]!, Colors.red[500]!]
+-                    : isNearEnd
+-                        ? [Colors.orange[300]!, Colors.orange[500]!]
+-                        : [Colors.blue[300]!, Colors.blue[500]!],
++                    ? [const Color(0xFF1E3A8A), const Color(0xFF1E40AF)] // deep blue
++                    : (isNearEnd
++                        ? [const Color(0xFF0EA5E9), const Color(0xFF0284C7)] // blue
++                        : [const Color(0xFF38BDF8), const Color(0xFF0EA5E9)]), // light blue/sky blue
+                 begin: Alignment.topLeft,
+                 end: Alignment.bottomRight,
+               ),
+-              borderRadius: BorderRadius.circular(16),
++              borderRadius: BorderRadius.circular(20),
+               boxShadow: [
+                 BoxShadow(
+                   color: (isAfter5PM
+-                          ? Colors.red
+-                          : isNearEnd
+-                              ? Colors.orange
+-                              : Colors.blue)
+-                      .withOpacity(0.4),
+-                  blurRadius: 12,
+-                  offset: const Offset(0, 6),
+-                  spreadRadius: 1,
++                          ? const Color(0xFF1E3A8A)
++                          : const Color(0xFF0EA5E9))
++                      .withOpacity(0.25),
++                  blurRadius: 15,
++                  offset: const Offset(0, 8),
+                 ),
+               ],
+             ),
+             child: Stack(
+               children: [
+-                // Pulsing background animation
+                 if (!isAfter5PM)
+                   _PulsingContainer(
+-                    color: isNearEnd ? Colors.orange : Colors.blue,
++                    color: const Color(0xFF0EA5E9),
+                   ),
+-                // Content
+                 Padding(
+                   padding: const EdgeInsets.all(12.0),
+                   child: Column(
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+-                      // Icon with rotation animation
+                       _RotatingIcon(
+-                        icon: Icons.timer,
++                        icon: Icons.timer_outlined,
+                         color: Colors.white,
+                         size: 24,
+                       ),
+                       const SizedBox(height: 8),
+-                      // Time display with scale animation
+                       TweenAnimationBuilder<double>(
+                         tween: Tween(begin: 0.0, end: 1.0),
+                         duration: const Duration(milliseconds: 300),
+                         builder: (context, scaleValue, child) {
+                           return Transform.scale(
+-                            scale: 0.8 + (0.2 * scaleValue),
++                            scale: 0.85 + (0.15 * scaleValue),
+                             child: Text(
+                               isAfter5PM
+                                   ? '00:00:00'
+@@ -1716,7 +2126,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                         style: TextStyle(
+                           color: Colors.white.withOpacity(0.9),
+                           fontSize: 10,
+-                          fontWeight: FontWeight.w500,
++                          fontWeight: FontWeight.bold,
+                         ),
+                       ),
+                     ],
+@@ -1736,18 +2146,18 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+     return Container(
+       height: 100,
+       decoration: BoxDecoration(
+-        gradient: LinearGradient(
++        gradient: const LinearGradient(
+           colors: [
+-            Colors.green[400]!,
+-            Colors.green[600]!,
++            Color(0xFF0EA5E9),
++            Color(0xFF0284C7),
+           ],
+           begin: Alignment.topLeft,
+           end: Alignment.bottomRight,
+         ),
+-        borderRadius: BorderRadius.circular(16),
++        borderRadius: BorderRadius.circular(20),
+         boxShadow: [
+           BoxShadow(
+-            color: Colors.green.withOpacity(0.4),
++            color: const Color(0xFF0EA5E9).withOpacity(0.3),
+             blurRadius: 15,
+             offset: const Offset(0, 8),
+           ),
+@@ -1757,7 +2167,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+         color: Colors.transparent,
+         child: InkWell(
+           onTap: _isMarkingAttendance ? null : _markAttendance,
+-          borderRadius: BorderRadius.circular(16),
++          borderRadius: BorderRadius.circular(20),
+           child: Container(
+             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+             child: _isMarkingAttendance
+@@ -1795,7 +2205,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                           shape: BoxShape.circle,
+                         ),
+                         child: const Icon(
+-                          Icons.fingerprint,
++                          Icons.fingerprint_rounded,
+                           color: Colors.white,
+                           size: 20,
+                         ),
+@@ -1838,10 +2248,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+           begin: Alignment.topLeft,
+           end: Alignment.bottomRight,
+         ),
+-        borderRadius: BorderRadius.circular(16),
++        borderRadius: BorderRadius.circular(20),
+         boxShadow: [
+           BoxShadow(
+-            color: Colors.orange.withOpacity(0.4),
++            color: Colors.orange.withOpacity(0.3),
+             blurRadius: 15,
+             offset: const Offset(0, 8),
+           ),
+@@ -1851,7 +2261,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+         color: Colors.transparent,
+         child: InkWell(
+           onTap: _leaveEarly,
+-          borderRadius: BorderRadius.circular(16),
++          borderRadius: BorderRadius.circular(20),
+           child: Container(
+             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+             child: Column(
+@@ -1865,7 +2275,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                     shape: BoxShape.circle,
+                   ),
+                   child: const Icon(
+-                    Icons.exit_to_app,
++                    Icons.exit_to_app_rounded,
+                     color: Colors.white,
+                     size: 20,
+                   ),
+@@ -1917,33 +2327,26 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                 begin: Alignment.topLeft,
+                 end: Alignment.bottomRight,
+               ),
+-              borderRadius: BorderRadius.circular(16),
++              borderRadius: BorderRadius.circular(20),
+               boxShadow: [
+                 BoxShadow(
+-                  color: Colors.orange.withOpacity(0.4),
++                  color: Colors.orange.withOpacity(0.3),
+                   blurRadius: 20,
+                   offset: const Offset(0, 10),
+                   spreadRadius: 2,
+                 ),
+-                BoxShadow(
+-                  color: Colors.orange.withOpacity(0.2),
+-                  blurRadius: 10,
+-                  offset: const Offset(0, 5),
+-                ),
+               ],
+             ),
+             child: Material(
+               color: Colors.transparent,
+               child: InkWell(
+                 onTap: _startOvertime,
+-                borderRadius: BorderRadius.circular(16),
++                borderRadius: BorderRadius.circular(20),
+                 splashColor: Colors.white.withOpacity(0.3),
+                 highlightColor: Colors.white.withOpacity(0.1),
+                 child: Stack(
+                   children: [
+-                    // Pulsing background effect
+                     _PulsingButtonBackground(color: Colors.orange),
+-                    // Button content
+                     Padding(
+                       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                       child: Row(
+@@ -1956,14 +2359,14 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                               shape: BoxShape.circle,
+                               boxShadow: [
+                                 BoxShadow(
+-                                  color: Colors.black.withOpacity(0.2),
++                                  color: Colors.black.withOpacity(0.15),
+                                   blurRadius: 8,
+                                   offset: const Offset(0, 4),
+                                 ),
+                               ],
+                             ),
+                             child: const Icon(
+-                              Icons.access_time,
++                              Icons.access_time_rounded,
+                               color: Colors.white,
+                               size: 24,
+                             ),
+@@ -1983,7 +2386,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
+                           ),
+                           const SizedBox(width: 8),
+                           Icon(
+-                            Icons.arrow_forward_ios,
++                            Icons.arrow_forward_ios_rounded,
+                             color: Colors.white.withOpacity(0.9),
+                             size: 18,
+                           ),

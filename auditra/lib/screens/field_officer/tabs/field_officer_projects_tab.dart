@@ -141,7 +141,7 @@ class _FieldOfficerProjectsTabState extends State<FieldOfficerProjectsTab> {
                                 filled: true,
                                 fillColor: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(24),
                                   borderSide: BorderSide.none,
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
