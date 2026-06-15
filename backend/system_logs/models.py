@@ -67,11 +67,13 @@ class SystemLog(models.Model):
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='system')
     user = models.ForeignKey(
         User, null=True, blank=True, on_delete=models.DO_NOTHING,
-        related_name='system_logs', help_text='User who performed the action'
+        related_name='system_logs', help_text='User who performed the action',
+        db_constraint=False
     )
     target_user = models.ForeignKey(
         User, null=True, blank=True, on_delete=models.DO_NOTHING,
-        related_name='targeted_logs', help_text='User affected by the action'
+        related_name='targeted_logs', help_text='User affected by the action',
+        db_constraint=False
     )
     description = models.TextField()
     ip_address = models.GenericIPAddressField(null=True, blank=True)
