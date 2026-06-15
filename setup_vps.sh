@@ -64,7 +64,7 @@ echo "Creating Nginx configuration..."
 cat <<EOT | sudo tee /etc/nginx/sites-available/auditra > /dev/null
 server {
     listen 80;
-    server_name 168.144.32.178;
+    server_name auditra.pasidumihiranga.me;
 
     # Serve React Frontend
     location / {
