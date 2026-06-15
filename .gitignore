@@ -86,7 +86,6 @@ staticfiles/
 # -----------------------------
 node_modules/
 .vite/
-**/.vite/
 
 # -----------------------------
 # Misc tooling artifacts

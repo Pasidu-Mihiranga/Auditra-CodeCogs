@@ -8,7 +8,23 @@ import 'network_service.dart';
 import 'offline_storage_service.dart';
 import 'offline_db_service.dart';
 
-/// Service for automatically syncing offline data when connectivity returns
+/// Automatically uploads locally saved data to the server when the device goes online.
+///
+/// When a field officer works offline, data is stored locally by [OfflineStorageService].
+/// This engine watches the network and runs the upload automatically as soon as
+/// internet is available. It handles four types of queued data in order:
+///   1. Valuations  — draft reports created offline.
+///   2. Attendance  — check-in / check-out / overtime records.
+///   3. Photos      — evidence photos taken offline (uploaded after their valuation).
+///   4. Submit actions — "submit to accessor" requests queued while offline.
+///
+/// Triggers:
+///   - Automatically when the device transitions from offline → online.
+///   - Every 5 minutes in the background (periodic timer) as a safety net.
+///   - Manually when the user taps the sync badge in the app bar.
+///
+/// Listeners can register callbacks with [addListener] to react to sync events
+/// (e.g. update UI counters, show a snackbar on success).
 class SyncEngine {
   static bool _isInitialized = false;
   static bool _isSyncing = false;
@@ -17,7 +33,18 @@ class SyncEngine {
   static final List<Function(Map<String, dynamic>)> _listeners = [];
   static bool _wasOffline = false;
 
-  /// Initialize sync engine
+  /// Starts the sync engine for the current field-officer session.
+  ///
+  /// What `init` does:
+  ///   1. Skips if already initialised (safe to call multiple times).
+  ///   2. Checks the user's role — exits quietly if not a field officer.
+  ///   3. Starts [NetworkService] so the engine can watch connectivity changes.
+  ///   4. Subscribes to the network stream: the moment connectivity is restored
+  ///      after an offline period it schedules a sync (1-second delay to let
+  ///      the connection stabilise first).
+  ///   5. At startup, if we are already online and have unsynced items, queues
+  ///      an immediate background sync (2-second delay).
+  ///   6. Starts a 5-minute periodic timer for background sync as a safety net.
   static Future<void> init() async {
     if (_isInitialized) {
       print('Sync engine already initialized');
@@ -79,17 +106,30 @@ class SyncEngine {
     print('Sync engine initialized');
   }
 
-  /// Add listener for sync events
+  /// Registers a callback that will be called every time the engine fires a sync event.
+  ///
+  /// Events that can arrive (passed as `event['event']`):
+  ///   - `syncStart`          — sync has begun.
+  ///   - `syncComplete`       — all items processed; includes `synced` and `failed` counts.
+  ///   - `syncError`          — unhandled error during sync.
+  ///   - `syncSuccess`        — at least one item was uploaded successfully.
+  ///   - `valuationSynced`    — a specific valuation was uploaded.
+  ///   - `itemStatusChanged`  — a single item's status changed (e.g. Queued → Syncing).
+  ///   - `conflictResolved`   — a duplicate was found on the server and resolved.
+  ///   - `submissionSynced`   — a queued submit action was sent to the server.
   static void addListener(Function(Map<String, dynamic>) listener) {
     _listeners.add(listener);
   }
 
-  /// Remove listener
+  /// Removes a previously registered listener so it no longer receives events.
+  /// Always call this in `dispose()` to prevent memory leaks.
   static void removeListener(Function(Map<String, dynamic>) listener) {
     _listeners.remove(listener);
   }
 
-  /// Notify all listeners
+  /// Broadcasts a sync event to every registered listener.
+  /// Errors inside individual listeners are caught and printed so one bad
+  /// listener cannot break the rest of the sync flow.
   static void _notifyListeners(String event, Map<String, dynamic> data) {
     for (var listener in _listeners) {
       try {
@@ -100,7 +140,8 @@ class SyncEngine {
     }
   }
 
-  /// Human-readable sync status label from int code
+  /// Converts an integer sync-status code into a readable string label.
+  /// 0 → 'Queued', 1 → 'Synced', 2 → 'Syncing', 3 → 'Failed'.
   static String syncStatusLabel(int code) {
     switch (code) {
       case 0: return 'Queued';
@@ -111,7 +152,16 @@ class SyncEngine {
     }
   }
 
-  /// Sync all pending items
+  /// Uploads all pending offline data to the server in one pass.
+  ///
+  /// Order of operations:
+  ///   1. Skips if another sync is already running (prevents double-uploads).
+  ///   2. Skips if the device is offline.
+  ///   3. Skips if there is nothing to upload (avoids pointless API calls).
+  ///   4. Uploads valuations, then attendance, then photos, then submit actions.
+  ///   5. Fires `syncComplete` event with total counts when done.
+  ///
+  /// Pass `silent: true` to suppress console output (used by the periodic timer).
   static Future<void> syncAll({bool silent = false}) async {
     if (_isSyncing) {
       if (!silent) print('Sync already in progress');
@@ -181,12 +231,26 @@ class SyncEngine {
     }
   }
 
-  /// Silent sync for periodic checks
+  /// Convenience wrapper that calls [syncAll] without any console output.
+  /// Called by the 5-minute background timer to avoid noisy logs.
   static Future<void> syncAllSilent() {
     return syncAll(silent: true);
   }
 
-  /// Sync a single valuation
+  /// Uploads a single offline valuation to the server.
+  ///
+  /// Steps:
+  ///   1. Loads the valuation from local storage by its UUID.
+  ///   2. Skips if it is already synced.
+  ///   3. Marks the status as Syncing (2) so the UI can show a spinner.
+  ///   4. Strips local-only fields (localId, syncStatus, etc.) before sending.
+  ///   5. Calls `ApiService.syncValuationToServer`.
+  ///   6. On success: marks the record as Synced and stores the server ID.
+  ///   7. On 409 Conflict (duplicate on server): resolves by treating the
+  ///      existing server record as the winner (last-write-wins).
+  ///   8. On any other failure: marks as Failed so it will be retried later.
+  ///
+  /// Returns a map with `success: true/false` and optional `serverId`.
   static Future<Map<String, dynamic>> syncValuation(String localId) async {
     final valuation = OfflineStorageService.getValuationByLocalId(localId);
 
@@ -254,7 +318,10 @@ class SyncEngine {
     }
   }
 
-  /// Sync all unsynced valuations
+  /// Loops through all unsynced valuations and calls [syncValuation] for each.
+  /// After all uploads are complete, calls [cleanupSyncedValuations] to remove
+  /// successfully synced records from the local database.
+  /// Returns `{'synced': N, 'failed': N}`.
   static Future<Map<String, dynamic>> _syncValuations({bool silent = false}) async {
     final unsynced = OfflineStorageService.getUnsyncedValuations();
     
@@ -293,7 +360,16 @@ class SyncEngine {
     return {'synced': synced, 'failed': failed};
   }
 
-  /// Sync all unsynced attendance records (Feature #4/14 — C2).
+  /// Uploads all unsynced attendance records (check-in, check-out, overtime).
+  ///
+  /// Each record's `action` field determines which API endpoint to call:
+  ///   - `check_in`       → POST /attendance/mark/
+  ///   - `check_out`      → POST /attendance/checkout/
+  ///   - `overtime_start` → POST /attendance/overtime/start/
+  ///   - `overtime_end`   → POST /attendance/overtime/end/
+  ///
+  /// A 409 Conflict (server already has today's record) is treated as success.
+  /// Returns `{'synced': N, 'failed': N}`.
   static Future<Map<String, dynamic>> _syncAttendance({bool silent = false}) async {
     final unsynced = OfflineStorageService.getUnsyncedAttendance();
 
@@ -359,7 +435,16 @@ class SyncEngine {
     return {'synced': synced, 'failed': failed};
   }
 
-  /// Sync all unsynced photos (Feature #4/14 — C2).
+  /// Uploads all offline photos whose valuation has already been uploaded.
+  ///
+  /// Photos depend on the valuation existing on the server first (because
+  /// the API links the photo to the valuation's server ID). If a photo's
+  /// valuation is not yet synced, the photo is skipped and left queued for
+  /// the next pass (when the valuation will have been uploaded).
+  ///
+  /// Uses `ApiService.uploadValuationPhoto` which sends GPS metadata,
+  /// caption, and ordering alongside the image bytes.
+  /// Returns `{'synced': N, 'failed': N}`.
   static Future<Map<String, dynamic>> _syncPhotos({bool silent = false}) async {
     final unsynced = OfflineStorageService.getUnsyncedPhotos();
 
@@ -430,7 +515,13 @@ class SyncEngine {
     return {'synced': synced, 'failed': failed};
   }
 
-  /// Sync queued valuation submit actions.
+  /// Processes queued "submit to accessor" actions.
+  ///
+  /// Each entry in the queue was created when the field officer tapped
+  /// "Submit to Accessor" while offline. This method calls
+  /// `ApiService.submitValuation` for each entry, which triggers the server
+  /// to change the valuation status to "submitted" and notify the accessor.
+  /// Returns `{'synced': N, 'failed': N}`.
   static Future<Map<String, dynamic>> _syncSubmitActions({bool silent = false}) async {
     final queued = OfflineStorageService.getUnsyncedSubmitActions();
     if (!silent && queued.isNotEmpty) {
@@ -468,7 +559,18 @@ class SyncEngine {
     return {'synced': synced, 'failed': failed};
   }
 
-  /// Get sync status
+  /// Returns a snapshot of the current sync state as a plain map.
+  ///
+  /// Keys returned:
+  ///   - `pendingValuations`    — number of unsynced valuation records.
+  ///   - `pendingAttendance`    — number of unsynced attendance records.
+  ///   - `pendingPhotos`        — number of unsynced photos.
+  ///   - `pendingSubmitActions` — number of queued submit actions.
+  ///   - `isOnline`             — true if the device has network right now.
+  ///   - `isSyncing`            — true if a sync pass is currently running.
+  ///   - `isInitialized`        — true if [init] has completed.
+  ///
+  /// Returns all-zero counts if the database is not yet initialised.
   static Future<Map<String, dynamic>> getStatus() async {
     try {
       final stats = OfflineStorageService.getStats();
@@ -495,151 +597,9 @@ class SyncEngine {
     }
   }
 
-  /// Dispose resources
-  static void dispose() {
-    _networkSubscription?.cancel();
-    _periodicSyncTimer?.cancel();
-    _listeners.clear();
-    _isInitialized = false;
-  }
-
-  /// Sync all unsynced photos (Feature #4/14 — C2).
-  static Future<Map<String, dynamic>> _syncPhotos({bool silent = false}) async {
-    final unsynced = OfflineStorageService.getUnsyncedPhotos();
-
-    if (!silent && unsynced.isNotEmpty) {
-      print('Syncing ${unsynced.length} photos...');
-    }
-
-    int synced = 0;
-    int failed = 0;
-
-    for (final photo in unsynced) {
-      final photoId = photo['id'] as String?;
-      final filePath = photo['filePath'] as String?;
-      final valuationLocalId = photo['valuationLocalId'] as String?;
-      if (photoId == null || filePath == null) {
-        failed++;
-        continue;
-      }
-
-      // Resolve valuation server id — we can only upload photos for a
-      // valuation that has already been synced to the server.
-      int? valuationServerId;
-      if (valuationLocalId != null) {
-        final v = OfflineStorageService.getValuationByLocalId(valuationLocalId);
-        if (v != null && v['serverId'] is int) {
-          valuationServerId = v['serverId'] as int;
-        }
-      }
-      if (valuationServerId == null) {
-        // Valuation not yet uploaded — leave photo queued for next pass.
-        continue;
-      }
-
-      final file = File(filePath);
-      if (!await file.exists()) {
-        await OfflineStorageService.markPhotoFailed(photoId);
-        failed++;
-        continue;
-      }
-
-      try {
-        final result = await ApiService.uploadValuationPhoto(
-          valuationServerId,
-          filePath,
-          caption: photo['caption'] as String?,
-          isPrimary: photo['isPrimary'] == true,
-          ordering: photo['ordering'] as int?,
-          capturedAt: photo['capturedAt'] as String?,
-          gpsLat: (photo['gpsLat'] as num?)?.toDouble(),
-          gpsLon: (photo['gpsLon'] as num?)?.toDouble(),
-          deviceId: photo['deviceId'] as String?,
-        );
-        if (result['success'] == true) {
-          final data = result['data'];
-          final serverId = (data is Map && data['id'] is int) ? data['id'] as int : 0;
-          await OfflineStorageService.markPhotoSynced(photoId, serverId);
-          synced++;
-        } else {
-          await OfflineStorageService.markPhotoFailed(photoId);
-          failed++;
-        }
-      } catch (_) {
-        await OfflineStorageService.markPhotoFailed(photoId);
-        failed++;
-      }
-    }
-
-    return {'synced': synced, 'failed': failed};
-  }
-
-  /// Sync queued valuation submit actions.
-  static Future<Map<String, dynamic>> _syncSubmitActions({bool silent = false}) async {
-    final queued = OfflineStorageService.getUnsyncedSubmitActions();
-    if (!silent && queued.isNotEmpty) {
-      print('Syncing ${queued.length} queued report submissions...');
-    }
-
-    int synced = 0;
-    int failed = 0;
-
-    for (final item in queued) {
-      final id = item['id']?.toString();
-      final valuationId = item['valuationId'];
-      if (id == null || valuationId is! int) {
-        failed++;
-        continue;
-      }
-
-      try {
-        await OfflineStorageService.markSubmitActionSyncing(id);
-        final result = await ApiService.submitValuation(valuationId);
-        if (result['success'] == true) {
-          await OfflineStorageService.markSubmitActionSynced(id);
-          synced++;
-          _notifyListeners('submissionSynced', {'valuationId': valuationId});
-        } else {
-          await OfflineStorageService.markSubmitActionFailed(id);
-          failed++;
-        }
-      } catch (_) {
-        await OfflineStorageService.markSubmitActionFailed(id);
-        failed++;
-      }
-    }
-
-    return {'synced': synced, 'failed': failed};
-  }
-
-  /// Get sync status
-  static Future<Map<String, dynamic>> getStatus() async {
-    try {
-      final stats = OfflineStorageService.getStats();
-      return {
-        'pendingValuations': stats['unsynced_valuations'] ?? 0,
-        'pendingAttendance': stats['unsynced_attendance'] ?? 0,
-        'pendingPhotos': stats['unsynced_photos'] ?? 0,
-        'pendingSubmitActions': stats['unsynced_submit_actions'] ?? 0,
-        'isOnline': NetworkService.isOnline,
-        'isSyncing': _isSyncing,
-        'isInitialized': _isInitialized,
-      };
-    } catch (e) {
-      // Return default status if database not initialized
-      return {
-        'pendingValuations': 0,
-        'pendingAttendance': 0,
-        'pendingPhotos': 0,
-        'pendingSubmitActions': 0,
-        'isOnline': NetworkService.isOnline,
-        'isSyncing': false,
-        'isInitialized': false,
-      };
-    }
-  }
-
-  /// Dispose resources
+  /// Stops the network listener and the periodic timer and clears all registered
+  /// listeners. Call this when the user logs out so the engine does not continue
+  /// running in the background after the session ends.
   static void dispose() {
     _networkSubscription?.cancel();
     _periodicSyncTimer?.cancel();
