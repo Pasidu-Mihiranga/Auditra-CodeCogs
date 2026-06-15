@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -38,31 +39,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
-    final result = await ApiService.getUserProfile();
-    if (!mounted) return;
-    if (result['success'] == true) {
-      final data = result['data'] as Map<String, dynamic>;
-      final profile = (data['profile'] as Map?)?.cast<String, dynamic>() ?? {};
-      setState(() {
-        _profile = data;
-        _firstNameCtrl.text = data['first_name'] ?? '';
-        _lastNameCtrl.text = data['last_name'] ?? '';
-        _phoneCtrl.text = profile['phone'] ?? '';
-        _bioCtrl.text = profile['bio'] ?? '';
-        _avatarUrl = profile['profile_image_url'];
-        _loading = false;
-      });
+    try {
+      setState(() { _loading = true; _error = null; });
+      final result = await ApiService.getUserProfile();
+      if (!mounted) return;
+      if (result['success'] == true) {
+        final data = result['data'] as Map<String, dynamic>;
 
-      // Feature #16: hydrate ThemeService with the server preference.
-      final serverTheme = profile['theme_preference'];
-      if (serverTheme is String) {
-        // ignore: use_build_context_synchronously
-        Provider.of<ThemeService>(context, listen: false)
-            .applyServerPreference(serverTheme);
+        // Safely extract profile Map
+        Map<String, dynamic> profile = {};
+        if (data['profile'] is Map) {
+          profile = Map<String, dynamic>.from(data['profile'] as Map);
+        }
+
+        setState(() {
+          _profile = data;
+          _firstNameCtrl.text = (data['first_name'] ?? '').toString();
+          _lastNameCtrl.text = (data['last_name'] ?? '').toString();
+          _phoneCtrl.text = (profile['phone'] ?? '').toString();
+          _bioCtrl.text = (profile['bio'] ?? '').toString();
+          _avatarUrl = profile['profile_image_url']?.toString();
+          _loading = false;
+        });
+
+        // Feature #16: hydrate ThemeService with the server preference.
+        final serverTheme = profile['theme_preference'];
+        if (serverTheme is String) {
+          // ignore: use_build_context_synchronously
+          Provider.of<ThemeService>(context, listen: false)
+              .applyServerPreference(serverTheme);
+        }
+      } else {
+        setState(() { _error = result['message']; _loading = false; });
       }
-    } else {
-      setState(() { _error = result['message']; _loading = false; });
+    } catch (e, stack) {
+      debugPrint('Error in ProfileScreen._load(): $e\n$stack');
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load profile details: $e';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -88,6 +105,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickAvatar() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Avatar upload is not supported on web'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
@@ -115,466 +138,512 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
 
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-      appBar: widget.showAppBar ? AppBar(title: const Text('My Profile')) : null,
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : SafeArea(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    // When used standalone (not inside dashboard), wrap with Scaffold
+    if (widget.showAppBar) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        appBar: AppBar(title: const Text('My Profile')),
+        body: _buildBody(isDark, bgColor),
+      );
+    }
+
+    // When embedded in IndexedStack (no Scaffold to avoid nesting issue)
+    return Container(
+      color: bgColor,
+      child: _buildBody(isDark, bgColor),
+    );
+  }
+
+  Widget _buildBody(bool isDark, Color bgColor) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: AppColors.error, size: 48),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black87,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Custom Header
+          Center(
+            child: Text(
+              'Profile',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : const Color(0xFF111827),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Avatar & Hello title
+          Center(
+            child: Column(
+              children: [
+                Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF334155) : Colors.white,
+                          width: 3.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: UserAvatar(
+                        imageUrl: _avatarUrl,
+                        firstName: _firstNameCtrl.text,
+                        lastName: _lastNameCtrl.text,
+                        username: _profile?['username'],
+                        radius: 48,
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Material(
+                        color: isDark ? const Color(0xFF334155) : Colors.black,
+                        shape: const CircleBorder(),
+                        elevation: 2,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: _uploading ? null : _pickAvatar,
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: _uploading
+                                ? const SizedBox(
+                                    height: 16,
+                                    width: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.edit_outlined,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Hello-${_firstNameCtrl.text.isNotEmpty ? _firstNameCtrl.text : (_profile?['username'] ?? 'User')}',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _profile?['email'] ?? _profile?['username'] ?? 'no-email@auditra.com',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Offline sync status banner
+          GestureDetector(
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Database is fully synchronized'),
+                  backgroundColor: AppColors.success,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.cloud_done_rounded,
+                      color: AppColors.accent,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Custom Header (mockup style)
-                        Center(
-                          child: Text(
-                            'Profile',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: isDark ? Colors.white : const Color(0xFF111827),
-                            ),
+                        Text(
+                          'Offline Sync Status',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: isDark ? Colors.white : const Color(0xFF111827),
                           ),
                         ),
-                        const SizedBox(height: 24),
-
-                        // Avatar & Hello title
-                        Center(
-                          child: Column(
-                            children: [
-                              Stack(
-                                alignment: Alignment.bottomRight,
-                                children: [
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: isDark ? const Color(0xFF334155) : Colors.white,
-                                        width: 3.0,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.06),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 6),
-                                        ),
-                                      ],
-                                    ),
-                                    child: UserAvatar(
-                                      imageUrl: _avatarUrl,
-                                      firstName: _firstNameCtrl.text,
-                                      lastName: _lastNameCtrl.text,
-                                      username: _profile?['username'],
-                                      radius: 48,
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: Material(
-                                      color: isDark ? const Color(0xFF334155) : Colors.black,
-                                      shape: const CircleBorder(),
-                                      elevation: 2,
-                                      child: InkWell(
-                                        customBorder: const CircleBorder(),
-                                        onTap: _uploading ? null : _pickAvatar,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(8),
-                                          child: _uploading
-                                              ? const SizedBox(
-                                                  height: 16,
-                                                  width: 16,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color: Colors.white,
-                                                  ),
-                                                )
-                                              : const Icon(
-                                                  Icons.edit_outlined,
-                                                  color: Colors.white,
-                                                  size: 16,
-                                                ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                'Hello-${_firstNameCtrl.text.isNotEmpty ? _firstNameCtrl.text : (_profile?['username'] ?? 'User')}',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: isDark ? Colors.white : const Color(0xFF111827),
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _profile?['email'] ?? _profile?['username'] ?? 'no-email@auditra.com',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: 2),
+                        Text(
+                          'All local reports synced & secure',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
                           ),
                         ),
-                        const SizedBox(height: 10),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: isDark ? const Color(0xFF64748B) : const Color(0xFF9CA3AF),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-                        // Offline sync status banner
-                        GestureDetector(
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Database is fully synchronized'),
-                                backgroundColor: AppColors.success,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 20),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.02),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
+          // Dual Grid Cards
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: widget.onNavigateToProjects,
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accentLight,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    'NEW',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.accent,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
                                     color: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
-                                    Icons.cloud_done_rounded,
-                                    color: AppColors.accent,
-                                    size: 20,
+                                    Icons.north_east_rounded,
+                                    size: 14,
+                                    color: isDark ? Colors.white : Colors.black87,
                                   ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Offline Sync Status',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w900,
-                                          color: isDark ? Colors.white : const Color(0xFF111827),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'All local reports synced & secure',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: isDark ? const Color(0xFF64748B) : const Color(0xFF9CA3AF),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-
-                        // Dual Grid Cards
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.02),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(20),
-                                    onTap: widget.onNavigateToProjects,
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.accentLight,
-                                                  borderRadius: BorderRadius.circular(20),
-                                                ),
-                                                child: Text(
-                                                  'NEW',
-                                                  style: TextStyle(
-                                                    fontSize: 9,
-                                                    fontWeight: FontWeight.w900,
-                                                    color: AppColors.accent,
-                                                    letterSpacing: 0.5,
-                                                  ),
-                                                ),
-                                              ),
-                                              Container(
-                                                padding: const EdgeInsets.all(6),
-                                                decoration: BoxDecoration(
-                                                  color: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: Icon(
-                                                  Icons.north_east_rounded,
-                                                  size: 14,
-                                                  color: isDark ? Colors.white : Colors.black87,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'Active Projects',
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: isDark ? Colors.white : const Color(0xFF111827),
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                'Assigned valuation projects',
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Container(
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.02),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(20),
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const ValuationHistoryScreen(),
-                                        ),
-                                      );
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                'Statistics',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
-                                                  letterSpacing: 0.5,
-                                                ),
-                                              ),
-                                              Container(
-                                                padding: const EdgeInsets.all(6),
-                                                decoration: BoxDecoration(
-                                                  color: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: Icon(
-                                                  Icons.analytics_outlined,
-                                                  size: 14,
-                                                  color: isDark ? Colors.white : Colors.black87,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'Valuation History',
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: isDark ? Colors.white : const Color(0xFF111827),
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                'Track submitted reports',
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Section List Options
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Personal Information',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: isDark ? Colors.white : const Color(0xFF111827),
-                                letterSpacing: -0.3,
-                              ),
-                            ),
                             const SizedBox(height: 12),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                                borderRadius: BorderRadius.circular(24),
-                                border: Border.all(
-                                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Active Projects',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? Colors.white : const Color(0xFF111827),
+                                  ),
                                 ),
-                              ),
-                              child: Column(
-                                children: [
-                                  _buildListItem(
-                                    context: context,
-                                    icon: Icons.person_outline_rounded,
-                                    title: 'Personal Information',
-                                    subtitle: 'Manage your account details',
-                                    isDark: isDark,
-                                    onTap: () => _showEditProfileDialog(context),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Assigned valuation projects',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
                                   ),
-                                  _divider(isDark),
-                                  _buildListItem(
-                                    context: context,
-                                    icon: Icons.palette_outlined,
-                                    title: 'Theme Preference',
-                                    subtitle: 'Toggle dark, light or default mode',
-                                    isDark: isDark,
-                                    onTap: () => _showThemeBottomSheet(context),
-                                  ),
-                                  _divider(isDark),
-                                  _buildListItem(
-                                    context: context,
-                                    icon: Icons.lock_outline_rounded,
-                                    title: 'Security Settings',
-                                    subtitle: 'Change password & secure accounts',
-                                    isDark: isDark,
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
-                                      );
-                                    },
-                                  ),
-                                  _divider(isDark),
-                                  _buildListItem(
-                                    context: context,
-                                    icon: Icons.logout_rounded,
-                                    title: 'Logout',
-                                    subtitle: 'Sign out of your session safely',
-                                    isDark: isDark,
-                                    iconColor: Colors.red[400],
-                                    onTap: () => _confirmLogout(context),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        const SizedBox(height: 100),
-                      ],
+                      ),
                     ),
                   ),
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ValuationHistoryScreen(),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Statistics',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFF3F4F6),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.analytics_outlined,
+                                    size: 14,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Valuation History',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? Colors.white : const Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Track submitted reports',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Section List Options
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Personal Information',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    _buildListItem(
+                      context: context,
+                      icon: Icons.person_outline_rounded,
+                      title: 'Personal Information',
+                      subtitle: 'Manage your account details',
+                      isDark: isDark,
+                      onTap: () => _showEditProfileDialog(context),
+                    ),
+                    _divider(isDark),
+                    _buildListItem(
+                      context: context,
+                      icon: Icons.palette_outlined,
+                      title: 'Theme Preference',
+                      subtitle: 'Toggle dark, light or default mode',
+                      isDark: isDark,
+                      onTap: () => _showThemeBottomSheet(context),
+                    ),
+                    _divider(isDark),
+                    _buildListItem(
+                      context: context,
+                      icon: Icons.lock_outline_rounded,
+                      title: 'Security Settings',
+                      subtitle: 'Change password & secure accounts',
+                      isDark: isDark,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+                        );
+                      },
+                    ),
+                    _divider(isDark),
+                    _buildListItem(
+                      context: context,
+                      icon: Icons.logout_rounded,
+                      title: 'Logout',
+                      subtitle: 'Sign out of your session safely',
+                      isDark: isDark,
+                      iconColor: Colors.red[400],
+                      onTap: () => _confirmLogout(context),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 100),
+        ],
+      ),
     );
   }
 

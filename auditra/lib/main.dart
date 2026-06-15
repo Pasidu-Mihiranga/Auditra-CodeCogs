@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -14,21 +15,27 @@ import 'services/push_service.dart';
 import 'theme/app_colors.dart';
 
 void main() async {
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
+  // IMPORTANT: Initialize bindings in the ROOT zone to avoid the
+  // "Zone mismatch" error on Flutter Web.
+  WidgetsFlutterBinding.ensureInitialized();
 
-    // Hive initialisation
-    await Hive.initFlutter();
-    await SyncEngine.init();
+  // Hive initialisation
+  await Hive.initFlutter();
+  await SyncEngine.init();
 
-    // Global error handler
-    FlutterError.onError = (details) {
-      ErrorReporter.reportFlutterError(details);
-    };
+  // Global error handler
+  FlutterError.onError = (details) {
+    ErrorReporter.reportFlutterError(details);
+  };
 
+  // HttpOverrides is only available on dart:io platforms (not web).
+  if (!kIsWeb) {
     HttpOverrides.global = MyHttpOverrides();
-    final themeService = ThemeService();
+  }
 
+  final themeService = ThemeService();
+
+  runZonedGuarded(() {
     runApp(
       ChangeNotifierProvider.value(
         value: themeService,

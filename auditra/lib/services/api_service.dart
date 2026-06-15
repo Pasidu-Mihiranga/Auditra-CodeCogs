@@ -3430,7 +3430,7 @@ class ApiService {
           return {'success': true, 'data': decoded};
         }
       } catch (e) {
-        print('Failed to fetch profile from server, trying cache fallback: $e');
+        debugPrint('Failed to fetch profile from server, trying cache fallback: $e');
       }
       
       // Fallback 1: Try local cache

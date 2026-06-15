@@ -262,43 +262,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
             ),
           ),
 
-          // 2. Floating top interactive back button
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 12,
-            left: 20,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.25),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.25),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => Navigator.of(context).pop(),
-                  customBorder: const CircleBorder(),
-                  child: const Padding(
-                    padding: EdgeInsets.all(10.0),
-                    child: Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          // 2. Floating top interactive back button (Moved below Positioned.fill to overlap scrollable content)
 
           // 3. Scrollable content
           Positioned.fill(
@@ -669,6 +633,44 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                     ],
                   ),
                 ],
+              ),
+            ),
+          ),
+
+          // 2. Floating top interactive back button (Moved here to overlay and receive touch events)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 12,
+            left: 20,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.25),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.25),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => Navigator.of(context).pop(),
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(10.0),
+                    child: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
