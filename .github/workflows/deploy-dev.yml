@@ -1,0 +1,67 @@
+name: Deploy Dev Branch to VPS
+
+on:
+  push:
+    branches:
+      - Dev
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Build Frontend
+        working-directory: './auditra web app'
+        run: |
+          npm ci
+          npm run build
+
+      - name: Copy files to VPS via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "backend/,auditra web app/dist/"
+          target: "/var/www/auditra"
+          strip_components: 0
+
+      - name: Execute post-deployment commands on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /var/www/auditra/backend
+            
+            # Activate virtual environment and install dependencies
+            # Adjust path if your venv is located elsewhere on the VPS
+            if [ -d "venv" ]; then
+              source venv/bin/activate
+            else
+              python3 -m venv venv
+              source venv/bin/activate
+            fi
+            
+            pip install -r requirements.txt
+            
+            # Run database migrations
+            python manage.py migrate
+            
+            # Restart backend services (Systemd)
+            # You will need to create these services on your VPS
+            sudo systemctl restart auditra-daphne
+            sudo systemctl restart auditra-celery
+            sudo systemctl restart auditra-celerybeat
+            
+            # Restart Nginx for frontend/API routing changes
+            sudo systemctl restart nginx
