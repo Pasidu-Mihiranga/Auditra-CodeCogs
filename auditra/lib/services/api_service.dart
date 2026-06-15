@@ -3390,9 +3390,12 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
       if (token == null) return;
-      await http.post(
+      await http.patch(
         Uri.parse('$baseUrl/notifications/$id/read/'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
       );
     } catch (_) {}
   }
@@ -3402,11 +3405,32 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
       if (token == null) return;
-      await http.post(
+      await http.patch(
         Uri.parse('$baseUrl/notifications/mark-all-read/'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
       );
     } catch (_) {}
+  }
+
+  static Future<bool> deleteNotification(int id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null) return false;
+      final response = await http.delete(
+        Uri.parse('$baseUrl/notifications/$id/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ---- User Profile ----
