@@ -20,6 +20,9 @@ jobs:
 
       - name: Build Frontend
         working-directory: './auditra web app'
+        env:
+          VITE_API_URL: '/api'
+          VITE_WS_URL: 'ws://168.144.32.178'
         run: |
           npm ci
           npm run build
