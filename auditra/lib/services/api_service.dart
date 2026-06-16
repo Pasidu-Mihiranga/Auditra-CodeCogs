@@ -1129,6 +1129,70 @@ class ApiService {
     }
   }
 
+  /// Cancel a scheduled visit with a reason. The backend will notify the client.
+  static Future<Map<String, dynamic>> cancelProjectVisit({
+    required int projectId,
+    required int visitId,
+    required String reason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var token = prefs.getString('access_token');
+      if (token == null) return {'success': false, 'message': 'Not authenticated'};
+
+      var response = await http.patch(
+        Uri.parse('$baseUrl/projects/$projectId/visits/$visitId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'status': 'cancelled',
+          'cancellation_reason': reason.trim(),
+        }),
+      );
+
+      if (response.statusCode == 401) {
+        final refreshResult = await refreshToken();
+        if (refreshResult['success'] == true) {
+          token = prefs.getString('access_token');
+          response = await http.patch(
+            Uri.parse('$baseUrl/projects/$projectId/visits/$visitId/'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'status': 'cancelled',
+              'cancellation_reason': reason.trim(),
+            }),
+          );
+        } else {
+          return {
+            'success': false,
+            'message': refreshResult['message'] ?? 'Session expired. Please login again.',
+          };
+        }
+      }
+
+      final dynamic data = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return {'success': true, 'data': data};
+      }
+
+      String message = 'Failed to cancel visit';
+      if (data is Map<String, dynamic>) {
+        final detail = data['detail'] ?? data['error'] ?? data['message'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          message = detail;
+        }
+      }
+      return {'success': false, 'message': message};
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   // Create project
   static Future<Map<String, dynamic>> createProject({
     required String title,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:intl/intl.dart';
 import '../../../../models/project_model.dart';
+import '../../../../services/api_service.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../widgets/shared_dashboard_widgets.dart';
 import '../../visit_scheduling_screen.dart';
@@ -23,6 +25,7 @@ class ProjectDetailsScreen extends StatefulWidget {
 
 class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   late FieldOfficerDocumentManager _documentManager;
+  String? _nextVisitOverride; // Locally updated after scheduling/cancelling
 
   @override
   void initState() {
@@ -31,6 +34,34 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
       context: context,
       setState: setState,
     );
+    // Fetch the latest visit date immediately upon loading the screen
+    _refreshNextVisit();
+  }
+
+  /// After scheduling or cancelling, re-fetch visits and update the next visit display.
+  Future<void> _refreshNextVisit() async {
+    try {
+      final res = await ApiService.getProjectVisits(widget.project.id);
+      if (res['success'] == true && mounted) {
+        final raw = res['data'];
+        final data = raw is List ? raw : <dynamic>[];
+        final visits = List<Map<String, dynamic>>.from(data);
+        // Find the earliest future scheduled (non-cancelled) visit
+        String? nextDate;
+        for (final v in visits) {
+          final status = (v['status'] ?? '').toString().toLowerCase();
+          if (status == 'cancelled' || status == 'completed') continue;
+          final dateStr = (v['scheduled_date'] ?? '').toString();
+          if (dateStr.isEmpty) continue;
+          if (nextDate == null || dateStr.compareTo(nextDate) < 0) {
+            nextDate = dateStr;
+          }
+        }
+        setState(() {
+          _nextVisitOverride = nextDate ?? '';
+        });
+      }
+    } catch (_) {}
   }
 
   String _formatPriorityLabel(String priority) {
@@ -392,7 +423,9 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                                 Expanded(
                                   child: _buildSwatchDetailCard(
                                     title: 'NEXT VISIT',
-                                    value: _formatNextVisitLine(project.nextScheduledVisit),
+                                    value: _formatNextVisitLine(
+                                      _nextVisitOverride ?? project.nextScheduledVisit,
+                                    ),
                                     icon: Icons.calendar_today_outlined,
                                     isDark: isDark,
                                   ),
@@ -436,9 +469,9 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                             ),
                             const SizedBox(height: 12),
                             _buildActionRow(
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
+                              onTap: () async {
+                                await Navigator.of(context).push<bool>(
+                                  MaterialPageRoute<bool>(
                                     builder: (_) => VisitSchedulingScreen(
                                       projectId: project.id,
                                       projectTitle: project.title,
@@ -450,6 +483,9 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
                                     ),
                                   ),
                                 );
+                                if (mounted) {
+                                  _refreshNextVisit();
+                                }
                               },
                               icon: Icons.calendar_today_rounded,
                               title: 'Schedule Valuation Visit',
