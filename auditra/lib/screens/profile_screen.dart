@@ -11,6 +11,7 @@ import '../services/network_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/user_avatar.dart';
 import 'change_password_screen.dart';
+import 'login_screen.dart';
 import 'field_officer/screens/valuation_history_screen.dart';
 
 
@@ -1248,7 +1249,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (context) {
+      builder: (dialogContext) {
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(horizontal: 32),
@@ -1312,7 +1313,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () => Navigator.pop(dialogContext),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           side: BorderSide(
@@ -1336,10 +1337,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () async {
-                          Navigator.pop(context); // Close dialog
+                          Navigator.pop(dialogContext); // Close dialog
                           await ApiService.logout();
                           if (context.mounted) {
-                            Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (_) => const LoginScreen()),
+                              (route) => false,
+                            );
                           }
                         },
                         style: ElevatedButton.styleFrom(
