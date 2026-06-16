@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
 import 'change_password_screen.dart';
+import 'forgot_password_screen.dart';
 import '../theme/app_colors.dart';
 import '../widgets/hero_slideshow.dart';
 
@@ -39,8 +40,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late Animation<double> _buttonFade;
   late Animation<Offset> _buttonSlide;
   
-  late Animation<double> _signUpFade;
-  late Animation<Offset> _signUpSlide;
+
 
   @override
   void initState() {
@@ -86,12 +86,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       CurvedAnimation(parent: _animController, curve: const Interval(0.5, 0.9, curve: Curves.easeOutCubic)),
     );
 
-    _signUpFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animController, curve: const Interval(0.6, 1.0, curve: Curves.easeIn)),
-    );
-    _signUpSlide = Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(
-      CurvedAnimation(parent: _animController, curve: const Interval(0.6, 1.0, curve: Curves.easeOutCubic)),
-    );
+
 
     _animController.forward();
   }
@@ -300,7 +295,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(height: size.height * 0.38), // Push form down below wave
+                      SizedBox(height: size.height * 0.18), // Push form higher into the wave
                       
                       // Staggered Title Header
                       FadeTransition(
@@ -475,8 +470,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               ),
                               TextButton(
                                 onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Forgot Password flow coming soon!')),
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const ForgotPasswordScreen(),
+                                    ),
                                   );
                                 },
                                 style: TextButton.styleFrom(
@@ -513,46 +510,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                       const SizedBox(height: 32),
 
-                      // Staggered Sign Up Link
-                      FadeTransition(
-                        opacity: _signUpFade,
-                        child: SlideTransition(
-                          position: _signUpSlide,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "Don't have an Account ? ",
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Sign Up flow coming soon!')),
-                                  );
-                                },
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: const Text(
-                                  'Sign up',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.accent,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -570,15 +527,15 @@ class TopWaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     var path = Path();
-    // Start from top-left, go down to y=0.52
-    path.lineTo(0, size.height * 0.52);
+    // Start from top-left, go down to y=0.75
+    path.lineTo(0, size.height * 0.75);
 
     // Curve down towards the right
-    var firstControlPoint = Offset(size.width * 0.40, size.height * 0.52);
-    var firstEndPoint = Offset(size.width * 0.65, size.height * 0.76);
+    var firstControlPoint = Offset(size.width * 0.35, size.height * 0.75);
+    var firstEndPoint = Offset(size.width * 0.60, size.height * 0.90);
 
-    var secondControlPoint = Offset(size.width * 0.85, size.height * 0.90);
-    var secondEndPoint = Offset(size.width, size.height * 0.82);
+    var secondControlPoint = Offset(size.width * 0.85, size.height * 1.05);
+    var secondEndPoint = Offset(size.width, size.height * 0.85);
 
     path.quadraticBezierTo(
         firstControlPoint.dx, firstControlPoint.dy, firstEndPoint.dx, firstEndPoint.dy);

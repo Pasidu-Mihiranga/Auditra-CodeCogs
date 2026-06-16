@@ -886,9 +886,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         title = 'My Profile';
         actions.add(
           IconButton(
-            icon: Icon(Icons.logout_rounded, color: isDark ? Colors.white : Colors.black),
-            tooltip: 'Logout',
-            onPressed: _logout,
+            icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : Colors.black),
+            tooltip: 'Notifications',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
           ),
         );
         break;

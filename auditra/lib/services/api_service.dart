@@ -191,6 +191,92 @@ class ApiService {
     }
   }
 
+  // Request password reset OTP
+  static Future<Map<String, dynamic>> requestPasswordResetOtp({
+    required String email,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/password-reset/request/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON.'};
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'OTP sent to your email'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['message'] ?? 'Failed to request OTP'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Verify password reset OTP
+  static Future<Map<String, dynamic>> verifyPasswordResetOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/password-reset/verify-otp/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'otp': otp}),
+      );
+
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON.'};
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'OTP verified successfully'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['message'] ?? 'Invalid or expired OTP'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Confirm password reset
+  static Future<Map<String, dynamic>> confirmPasswordReset({
+    required String email,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/password-reset/confirm/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'new_password': newPassword,
+        }),
+      );
+
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON.'};
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'Password reset successfully'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['message'] ?? 'Failed to reset password'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   // Get user profile
   static Future<Map<String, dynamic>> getProfile() async {
     try {

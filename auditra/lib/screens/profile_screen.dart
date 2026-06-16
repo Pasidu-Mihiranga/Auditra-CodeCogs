@@ -667,38 +667,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          SizedBox(
+          // Modern Logout Button
+          Container(
             width: double.infinity,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.error.withOpacity(0.2),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+            margin: const EdgeInsets.only(top: 12),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.error.withOpacity(0.15) : AppColors.error.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: AppColors.error.withOpacity(isDark ? 0.3 : 0.2),
+                width: 1.5,
               ),
-              child: ElevatedButton.icon(
-                onPressed: () => _confirmLogout(context),
-                icon: const Icon(Icons.logout_rounded, size: 20),
-                label: const Text(
-                  'Logout',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.error,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24),
+              child: InkWell(
+                onTap: () => _confirmLogout(context),
+                borderRadius: BorderRadius.circular(24),
+                highlightColor: AppColors.error.withOpacity(0.1),
+                splashColor: AppColors.error.withOpacity(0.2),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.logout_rounded, color: isDark ? const Color(0xFFFCA5A5) : AppColors.error, size: 22),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Log Out',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? const Color(0xFFFCA5A5) : AppColors.error,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
