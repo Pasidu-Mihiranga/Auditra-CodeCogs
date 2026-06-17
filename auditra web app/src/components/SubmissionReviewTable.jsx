@@ -68,11 +68,12 @@ export default function SubmissionReviewTable({
   emptyTitle = 'No submissions found',
   emptySubtitle = 'Submissions will appear here',
   loadingLabel = 'Loading submissions...',
+  containerSx,
 }) {
   const colCount = renderCoordinatorCell ? 8 : 7;
 
   return (
-    <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
+    <TableContainer component={Paper} sx={{ borderRadius: 2, ...containerSx }}>
       <Table size="small">
         <TableHead>
           <TableRow sx={{ bgcolor: (t) => t.palette.custom?.tableHeader || '#F1F5F9' }}>
@@ -162,7 +163,7 @@ export default function SubmissionReviewTable({
                   <TableRow>
                     <TableCell colSpan={colCount} sx={{ py: 0, borderBottom: isExpanded ? undefined : 'none' }}>
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                        <Box sx={{ py: 3, px: 3, bgcolor: renderCoordinatorCell ? (t) => t.palette.custom?.cardInner : undefined }}>
+                        <Box sx={{ py: 3, px: 3, bgcolor: (t) => t.palette.custom?.cardInner || 'grey.50' }}>
                           {renderExpandedTop?.(sub)}
 
                           <Box sx={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflowX: 'auto' }}>

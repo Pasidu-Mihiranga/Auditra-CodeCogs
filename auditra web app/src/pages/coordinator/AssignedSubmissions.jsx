@@ -237,6 +237,7 @@ export default function AssignedSubmissions() {
         onToggleExpand={handleToggleExpand}
         statusHeader="Response Status"
         projectBeforeCompany
+        containerSx={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
         renderClientCell={(sub, fullName) => (
           <>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>{fullName}</Typography>
@@ -361,7 +362,7 @@ export default function AssignedSubmissions() {
             Please provide a reason for rejecting this assignment. The admin will be notified and can reassign a different coordinator.
           </Typography>
           {selectedSubmission && (
-            <Paper sx={{ p: 2, bgcolor: 'grey.50', mb: 3, borderRadius: 2 }}>
+            <Paper sx={{ p: 2, bgcolor: (t) => t.palette.custom?.cardInner || 'grey.50', mb: 3, borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                 {selectedSubmission.project_title}
               </Typography>
