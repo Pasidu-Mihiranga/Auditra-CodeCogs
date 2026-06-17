@@ -9,6 +9,7 @@ import axiosClient from '../../api/axiosClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { useThemeMode } from '../../contexts/ThemeContext';
 import UserAvatar from '../../components/UserAvatar';
+import { compressImage } from '../../utils/imageCompressor';
 
 export default function Profile() {
   const { user, updateUser } = useAuth();
@@ -74,8 +75,9 @@ export default function Profile() {
     setUploading(true);
     setError('');
     try {
+      const compressedFile = await compressImage(file);
       const fd = new FormData();
-      fd.append('avatar', file);
+      fd.append('avatar', compressedFile);
       const res = await axiosClient.post('/auth/profile/me/avatar/', fd);
       setProfile((prev) => ({
         ...prev,
