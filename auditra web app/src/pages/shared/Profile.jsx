@@ -79,11 +79,12 @@ export default function Profile() {
       const fd = new FormData();
       fd.append('avatar', compressedFile);
       const res = await axiosClient.post('/auth/profile/me/avatar/', fd);
+      const cacheBustedUrl = `${res.data.profile_image_url}?t=${Date.now()}`;
       setProfile((prev) => ({
         ...prev,
-        profile: { ...prev?.profile, profile_image_url: res.data.profile_image_url },
+        profile: { ...prev?.profile, profile_image_url: cacheBustedUrl },
       }));
-      if (updateUser) updateUser({ ...user, profile_image_url: res.data.profile_image_url });
+      if (updateUser) updateUser({ ...user, profile_image_url: cacheBustedUrl });
       setSuccess('Avatar updated');
     } catch {
       setError('Avatar upload failed (max 2MB JPEG/PNG)');
