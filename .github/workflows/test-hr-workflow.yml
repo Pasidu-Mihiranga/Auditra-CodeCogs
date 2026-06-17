@@ -57,4 +57,5 @@ jobs:
           REDIS_URL: redis://localhost:6379
           SECRET_KEY: test_secret_key_123
         run: |
+          touch .env
           python manage.py test authentication.tests.test_hr_workflow_e2e
