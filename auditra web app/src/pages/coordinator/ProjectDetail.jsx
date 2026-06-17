@@ -13,6 +13,7 @@ import {
   HourglassEmpty, AttachMoney, AssignmentTurnedIn, Block, AttachFile
 } from '@mui/icons-material';
 import projectService from '../../services/projectService';
+import { getMediaUrl } from '../../utils/mediaUtils';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
 import InfoField from '../../components/InfoField';
@@ -431,15 +432,6 @@ export default function ProjectDetail() {
 
   if (loading) return <LoadingSpinner />;
   if (!project) return <Alert severity="error">Project not found</Alert>;
-
-  const getMediaUrl = (url) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-    
-    let baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-    baseUrl = baseUrl.replace(/\/api\/?$/, '');
-    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-  };
 
   const isCoordinator = role === 'coordinator';
   const standupAllowed = ['admin', 'coordinator', 'field_officer', 'accessor', 'senior_valuer', 'md_gm'].includes(role);
