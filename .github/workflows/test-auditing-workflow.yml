@@ -1,0 +1,60 @@
+name: Auditing Workflow E2E Test
+
+on:
+  push:
+    branches:
+      - Dev
+  pull_request:
+    branches:
+      - Dev
+
+jobs:
+  test-auditing:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: auditra_test
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Auditing E2E Workflow Test
+        working-directory: ./backend
+        env:
+          DB_NAME: auditra_test
+          DB_USER: testuser
+          DB_PASSWORD: testpassword
+          DB_HOST: localhost
+          DB_PORT: 5432
+          REDIS_URL: redis://localhost:6379
+          SECRET_KEY: test_secret_key_123
+        run: |
+          python manage.py test projects.tests.test_auditing_workflow_e2e
