@@ -9,7 +9,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/welcome_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/field_officer_dashboard.dart';
 import 'widgets/hero_slideshow.dart';
 import 'services/api_service.dart';
 import 'services/sync_engine.dart';
@@ -167,9 +167,27 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       }
 
       final role = await ApiService.getUserRole();
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomeScreen(userRole: role ?? 'unassigned')),
-      );
+      if (role == 'field_officer') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const FieldOfficerDashboard()),
+        );
+      } else {
+        final roleDisplay = (roleResult['success'] && roleResult['data'] != null)
+            ? (roleResult['data']['role_display'] ?? role)
+            : role;
+
+        await ApiService.logout();
+
+        if (!mounted) return;
+
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (context, a1, a2) => LoginScreen(restrictionRole: roleDisplay ?? 'User'),
+            transitionsBuilder: (context, a1, a2, child) => FadeTransition(opacity: a1, child: child),
+            transitionDuration: const Duration(milliseconds: 600),
+          ),
+        );
+      }
     } else {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(

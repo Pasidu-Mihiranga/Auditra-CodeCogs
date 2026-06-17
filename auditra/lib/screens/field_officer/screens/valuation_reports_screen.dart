@@ -17,11 +17,13 @@ import 'package:url_launcher/url_launcher.dart';
 class ValuationReportsScreen extends StatefulWidget {
   final Project project;
   final VoidCallback? onProjectUpdated; // Optional callback to notify parent when project data changes
+  final String? targetValuationId; // Target valuation ID to scroll to on screen load
 
   const ValuationReportsScreen({
     super.key,
     required this.project,
     this.onProjectUpdated,
+    this.targetValuationId,
   });
 
   @override
@@ -35,6 +37,7 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
   late FieldOfficerDocumentManager _documentManager; // Handles document-related operations
   Project? _currentProject; // Holds the latest project data after refreshes
   bool _isLoading = false; // Controls loading indicator visibility
+  final Map<String, GlobalKey> _cardKeys = {}; // Key map for autoscrolling
 
   /// Called once when the screen first opens.
   /// Stores the project passed from the parent and sets up the document manager
@@ -48,6 +51,22 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
       context: context,
       setState: setState,
     );
+
+    // Scroll to target valuation if provided
+    if (widget.targetValuationId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          final key = _cardKeys[widget.targetValuationId];
+          if (key != null && key.currentContext != null) {
+            Scrollable.ensureVisible(
+              key.currentContext!,
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOut,
+            );
+          }
+        });
+      });
+    }
   }
 
   @override
@@ -218,14 +237,14 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
           // Refresh button
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFEFF6FF),
               shape: BoxShape.circle,
             ),
             child: IconButton(
-              icon: const Icon(
+              icon: Icon(
                 Icons.refresh_rounded,
                 size: 20,
-                color: Color(0xFF3B82F6),
+                color: isDark ? Colors.white : const Color(0xFF3B82F6),
               ),
               onPressed: _refreshProject,
             ),
@@ -299,6 +318,7 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                       )
                     // List of valuation report cards
                     : ListView.builder(
+                        cacheExtent: 9999,
                         padding: const EdgeInsets.only(
                           top: 16,
                           left: 16,
@@ -308,7 +328,11 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                         itemCount: valuations.length,
                         itemBuilder: (context, index) {
                           final valuation = valuations[index];
-                          return _buildReportCard(valuation, project);
+                          final cardKey = _cardKeys.putIfAbsent(valuation.id.toString(), () => GlobalKey());
+                          return KeyedSubtree(
+                            key: cardKey,
+                            child: _buildReportCard(valuation, project),
+                          );
                         },
                       ),
           ),

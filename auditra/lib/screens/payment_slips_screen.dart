@@ -190,12 +190,99 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     }
   }
 
+  Widget _buildHeader(BuildContext context, bool isAdminOrHR) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 16,
+        bottom: 16,
+        left: 20,
+        right: 20,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0B1220) : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF3F4F6),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Back button
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFF3F4F6),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 18,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Title and Subtitle
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isAdminOrHR ? 'All Payment Slips' : 'Payment Slips',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Auditra System',
+                  style: TextStyle(
+                    color: Color(0xFF3B82F6),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          // Refresh button
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFEFF6FF),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: Icon(
+                Icons.refresh_rounded,
+                size: 20,
+                color: isDark ? Colors.white : const Color(0xFF3B82F6),
+              ),
+              onPressed: _loadPaymentSlips,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = _userRole ?? widget.role;
     // If showOnlyOwn is true, treat as regular user (not admin/HR) to show only own slips
     final isAdminOrHR = !widget.showOnlyOwn && (role == 'admin' || role == 'hr_head');
     final isHRHead = !widget.showOnlyOwn && (role == 'hr_head');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     final body = _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -206,21 +293,33 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.payment, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF0F9FF),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.receipt_long_rounded,
+                          size: 48,
+                          color: isDark ? Colors.grey[400] : const Color(0xFF3B82F6),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       Text(
                         'No payment slips found',
                         style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
+                          fontSize: 20,
+                          color: isDark ? Colors.white : const Color(0xFF1F2937),
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Payment slips will appear here once admin uploads them',
                         style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[500],
+                          fontSize: 15,
+                          color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -252,65 +351,12 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     
     if (widget.showAppBar) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              SliverAppBar(
-                expandedHeight: 150.0,
-                floating: false,
-                pinned: true,
-                elevation: 0,
-                backgroundColor: const Color(0xFF0D47A1),
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                flexibleSpace: FlexibleSpaceBar(
-                  centerTitle: true,
-                  titlePadding: const EdgeInsets.only(bottom: 16),
-                  title: Text(
-                    isAdminOrHR ? 'All Payment Slips' : 'Payment Slips',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  background: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          right: -20,
-                          top: -20,
-                          child: Icon(
-                            Icons.receipt_long_rounded,
-                            color: Colors.white.withOpacity(0.12),
-                            size: 150,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                    onPressed: _loadPaymentSlips,
-                    tooltip: 'Refresh',
-                  ),
-                ],
-              ),
-            ];
-          },
-          body: body,
+        backgroundColor: isDark ? const Color(0xFF0B1220) : const Color(0xFFF9FAFB),
+        body: Column(
+          children: [
+            _buildHeader(context, isAdminOrHR),
+            Expanded(child: body),
+          ],
         ),
       );
     }
@@ -320,12 +366,16 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
 
   /// Build action buttons for HR Head (Create and Upload Payment Slips)
   Widget _buildHRHeadActionButtons() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: Colors.blue[50],
+        color: isDark ? Colors.white.withOpacity(0.04) : Colors.blue[50],
         border: Border(
-          bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+          bottom: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.08) : Colors.grey[300]!,
+            width: 1,
+          ),
         ),
       ),
       child: Row(
@@ -336,7 +386,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
               icon: const Icon(Icons.add_circle_outline, size: 20),
               label: const Text('Create Payment Slips'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
+                backgroundColor: isDark ? const Color(0xFF10B981) : Colors.green,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -352,7 +402,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
               icon: const Icon(Icons.cloud_upload_outlined, size: 20),
               label: const Text('Upload Payment Slips'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
+                backgroundColor: isDark ? const Color(0xFFF59E0B) : Colors.orange,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -536,6 +586,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   }
 
   Widget _buildAdminView() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     // Filter payment slips based on search query (only others, not admin's own)
     // Double-check to ensure NO admin payment slips are displayed
     final filteredSlips = _searchQuery.isEmpty
@@ -557,18 +608,42 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
               child: Container(
                 margin: const EdgeInsets.only(bottom: 16.0),
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: TextField(
                   controller: _searchController,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 15,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Search by Employee Number',
-                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    hintStyle: TextStyle(
+                      color: isDark ? Colors.grey[500] : Colors.grey[400],
+                      fontSize: 14,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: isDark ? Colors.grey[400] : Colors.grey,
+                    ),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
-                            icon: const Icon(Icons.clear, color: Colors.grey),
+                            icon: Icon(
+                              Icons.clear_rounded,
+                              color: isDark ? Colors.grey[400] : Colors.grey,
+                            ),
                             onPressed: () {
                               _searchController.clear();
                               setState(() {
@@ -601,13 +676,18 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
               padding: const EdgeInsets.all(32.0),
               child: Column(
                 children: [
-                  Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                  Icon(
+                    Icons.search_off_rounded,
+                    size: 64,
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'No payment slips found',
                     style: TextStyle(
                       fontSize: 18,
-                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : const Color(0xFF1F2937),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -615,7 +695,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                     'No employee found with number: $_searchQuery',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[500],
+                      color: isDark ? Colors.grey[500] : const Color(0xFF6B7280),
                     ),
                   ),
                 ],
@@ -627,105 +707,236 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   }
 
   Widget _buildPaymentSlipCard(PaymentSlip slip, bool showEmployeeName) {
-    return Card(
-      elevation: 4,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final statusColor = _getStatusColor(slip.status);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          radius: 20,
-          backgroundColor: _getStatusColor(slip.status),
-          child: Icon(
-            _getStatusIcon(slip.status),
-            color: Colors.white,
-            size: 20,
-          ),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE6EEF8),
+          width: 1.2,
         ),
-        title: Text(
-          '${slip.monthDisplay} ${slip.year}',
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (showEmployeeName && slip.userFullName.isNotEmpty)
-                Text(
-                  'Employee: ${slip.userFullName}',
-                  style: TextStyle(
-                    color: Colors.grey[800],
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              if (showEmployeeName && slip.userFullName.isNotEmpty)
-                const SizedBox(height: 2),
-              Text(
-                'Employee no: ${slip.employeeNumber ?? slip.userId.toString()}',
-                style: TextStyle(
-                  color: Colors.grey[700],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Pay Slip no: ${slip.paySlipNumber ?? 'PS-' + slip.year.toString() + slip.month.toString().padLeft(2, '0') + '-' + slip.userId.toString()}',
-                style: TextStyle(
-                  color: Colors.grey[700],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Role: ${slip.roleDisplay}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-        trailing: SizedBox(
-          width: 110,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                'Rs ${NumberFormat('#,##0.00').format(slip.netSalary)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: Colors.green,
-                ),
-              ),
-              Text(
-                slip.statusDisplay,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _getStatusColor(slip.status),
-                ),
-              ),
-            ],
-          ),
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: _buildPaymentSlipDetails(slip),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          trailing: const SizedBox.shrink(),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Colored header container matching valuation reports screen card header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(isDark ? 0.15 : 0.08),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(24),
+                    topRight: Radius.circular(24),
+                  ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(isDark ? 0.2 : 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        _getStatusIcon(slip.status),
+                        size: 20,
+                        color: statusColor,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        '${slip.monthDisplay} ${slip.year}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                          color: isDark ? Colors.white : const Color(0xFF1C1E21),
+                        ),
+                      ),
+                    ),
+                    // Status badge pill
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: statusColor.withOpacity(0.4),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        slip.statusDisplay.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ],
+                ),
+              ),
+              // Collapsed Body container
+              Container(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Net Salary',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Rs. ${NumberFormat('#,##0.00').format(slip.netSalary)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Pay Slip No',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                slip.paySlipNumber ?? 'PS-${slip.year}${slip.month.toString().padLeft(2, '0')}-${slip.userId}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                  color: isDark ? Colors.grey[300] : const Color(0xFF334155),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (showEmployeeName || (slip.userFullName.isNotEmpty)) ...[
+                      const SizedBox(height: 16),
+                      Divider(
+                        height: 1,
+                        color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFE2E8F0),
+                      ),
+                      const SizedBox(height: 16),
+                      if (showEmployeeName && slip.userFullName.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6.0),
+                          child: Row(
+                            children: [
+                              Icon(Icons.person_outline_rounded, size: 16, color: isDark ? Colors.grey[400] : const Color(0xFF64748B)),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Employee: ${slip.userFullName}',
+                                style: TextStyle(
+                                  color: isDark ? Colors.grey[300] : const Color(0xFF334155),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.badge_outlined, size: 16, color: isDark ? Colors.grey[400] : const Color(0xFF64748B)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Employee no: ${slip.employeeNumber ?? slip.userId.toString()}',
+                            style: TextStyle(
+                              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(Icons.work_outline_rounded, size: 16, color: isDark ? Colors.grey[400] : const Color(0xFF64748B)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Role: ${slip.roleDisplay}',
+                            style: TextStyle(
+                              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 20.0, right: 20.0, bottom: 20.0),
+              child: _buildPaymentSlipDetails(slip),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2404,6 +2615,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   }
 
   Widget _buildPaymentSlipHeader(PaymentSlip slip) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2427,7 +2639,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (slip.userFullName.isNotEmpty)
-                Text(slip.userFullName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                Text(slip.userFullName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
               const SizedBox(height: 12),
               Wrap(
                 alignment: WrapAlignment.center,
@@ -2458,22 +2670,23 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Divider(color: Colors.grey[300]),
+        Divider(color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]),
         const SizedBox(height: 12),
         if (slip.generatedAt != null)
           Padding(
             padding: const EdgeInsets.only(top: 4.0),
-            child: Text('Generated: ${DateFormat('yyyy-MM-dd').format(slip.generatedAt)}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            child: Text('Generated: ${DateFormat('yyyy-MM-dd').format(slip.generatedAt)}', style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600])),
           ),
       ],
     );
   }
 
   Widget _buildSalaryBreakdown(PaymentSlip slip) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (_shouldAlignLeft) {
       return Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.04) : Colors.grey[50], borderRadius: BorderRadius.circular(8)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2484,7 +2697,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
             _buildSalaryRow('EPF Contribution', -slip.epfContribution),
             _buildSalaryRow('Overtime Hours', slip.overtimeHours, isHours: true),
             _buildSalaryRow('Overtime Pay', slip.overtimePay),
-            const Divider(height: 24),
+            Divider(height: 24, color: isDark ? Colors.white.withOpacity(0.1) : null),
             _buildNetSalaryRow(slip.netSalary),
           ],
         ),
@@ -2492,13 +2705,20 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     } else {
       return Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!, width: 1)),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.04) : Colors.grey[50], 
+          borderRadius: BorderRadius.circular(8), 
+          border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : Colors.grey[300]!, width: 1),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(6)),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.blue.withOpacity(0.15) : Colors.blue[50], 
+                borderRadius: BorderRadius.circular(6),
+              ),
               child: const Text('Salary Breakdown', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue)),
             ),
             const SizedBox(height: 16),
@@ -2506,7 +2726,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
             _buildSalaryRow('Allowances', slip.allowances),
             _buildSalaryRow('Overtime Hours', slip.overtimeHours, isHours: true),
             _buildSalaryRow('Overtime Pay', slip.overtimePay),
-            const Divider(height: 24, thickness: 1.5),
+            Divider(height: 24, thickness: 1.5, color: isDark ? Colors.white.withOpacity(0.1) : null),
             _buildSalaryRow('EPF Contribution', -slip.epfContribution, isDeduction: true),
             const SizedBox(height: 16),
             _buildNetSalaryRow(slip.netSalary),
@@ -2517,6 +2737,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   }
 
   Widget _buildSalaryRow(String label, double amount, {bool isHours = false, Color? color, bool isDeduction = false}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final formattedAmount = isHours ? '${amount.toStringAsFixed(1)} hrs' : 'Rs ${NumberFormat('#,##0.00').format(amount.abs())}';
     
     if (_shouldAlignLeft) {
@@ -2526,7 +2747,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(child: Text('$label:', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
-            Text(formattedAmount, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87)),
+            Text(formattedAmount, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? Colors.white70 : Colors.black87)),
           ],
         ),
       );
@@ -2537,8 +2758,8 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('$label:', style: TextStyle(fontSize: 14, color: Colors.grey[700], fontWeight: FontWeight.w500)),
-            Text(isHours ? formattedAmount : '$prefix$formattedAmount', style: TextStyle(fontSize: 14, fontWeight: isDeduction ? FontWeight.bold : FontWeight.w600, color: Colors.black87)),
+            Text('$label:', style: TextStyle(fontSize: 14, color: isDark ? Colors.grey[300] : Colors.grey[700], fontWeight: FontWeight.w500)),
+            Text(isHours ? formattedAmount : '$prefix$formattedAmount', style: TextStyle(fontSize: 14, fontWeight: isDeduction ? FontWeight.bold : FontWeight.w600, color: isDark ? Colors.white : Colors.black87)),
           ],
         ),
       );
@@ -2546,16 +2767,18 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   }
 
   Widget _buildNetSalaryRow(double netSalary) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Expanded(child: Text('Net Salary:', style: TextStyle(fontSize: _shouldAlignLeft ? 16 : 18, fontWeight: FontWeight.bold, color: Colors.black87))),
-        Text('Rs ${NumberFormat('#,##0.00').format(netSalary)}', style: TextStyle(fontSize: _shouldAlignLeft ? 16 : 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+        Expanded(child: Text('Net Salary:', style: TextStyle(fontSize: _shouldAlignLeft ? 16 : 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87))),
+        Text('Rs ${NumberFormat('#,##0.00').format(netSalary)}', style: TextStyle(fontSize: _shouldAlignLeft ? 16 : 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
       ],
     );
   }
 
   Widget _buildPaymentSlipContent(PaymentSlip slip) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       constraints: const BoxConstraints(),
       padding: const EdgeInsets.all(20.0),
@@ -2565,21 +2788,25 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(20.0),
-            decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.blue.withOpacity(0.15) : Colors.blue[50], 
+              borderRadius: BorderRadius.circular(8), 
+              border: Border.all(color: isDark ? Colors.blue.withOpacity(0.3) : Colors.blue[200]!),
+            ),
             child: Column(
               children: [
                 const Icon(Icons.verified_user, size: 60, color: Colors.blue),
                 const SizedBox(height: 12),
                 const Text('Auditra', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue)),
                 const SizedBox(height: 4),
-                const Text('Payment Slip', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey)),
+                Text('Payment Slip', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: isDark ? Colors.grey[400] : Colors.grey)),
               ],
             ),
           ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.04) : Colors.grey[50], borderRadius: BorderRadius.circular(8)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2606,7 +2833,11 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!)),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.04) : Colors.grey[50], 
+              borderRadius: BorderRadius.circular(8), 
+              border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : Colors.grey[300]!),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -2619,14 +2850,14 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Overtime Hours:', style: TextStyle(fontSize: 14, color: Colors.grey[700])),
-                    Text('${slip.overtimeHours.toStringAsFixed(1)} hrs', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey[800])),
+                    Text('Overtime Hours:', style: TextStyle(fontSize: 14, color: isDark ? Colors.grey[300] : Colors.grey[700])),
+                    Text('${slip.overtimeHours.toStringAsFixed(1)} hrs', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? Colors.grey[200] : Colors.grey[800])),
                   ],
                 ),
                 const SizedBox(height: 8),
                 _buildSalaryRow('Overtime Pay', slip.overtimePay),
                 const SizedBox(height: 12),
-                const Divider(),
+                Divider(color: isDark ? Colors.white.withOpacity(0.1) : null),
                 const SizedBox(height: 12),
                 _buildSalaryRow('EPF Contribution (8%)', -slip.epfContribution, isDeduction: true),
                 const SizedBox(height: 16),
@@ -2635,22 +2866,22 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Expanded(child: Text('Net Salary:', textAlign: TextAlign.left, style: TextStyle(fontSize: 14, color: Colors.black87, fontWeight: FontWeight.bold))),
-                          Text('Rs ${NumberFormat('#,##,###').format(slip.netSalary)}', textAlign: TextAlign.right, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          Expanded(child: Text('Net Salary:', textAlign: TextAlign.left, style: TextStyle(fontSize: 14, color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold))),
+                          Text('Rs ${NumberFormat('#,##,###').format(slip.netSalary)}', textAlign: TextAlign.right, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                         ],
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Net Salary:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                          Text('Rs. ${NumberFormat('#,##,###').format(slip.netSalary)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          Text('Net Salary:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                          Text('Rs. ${NumberFormat('#,##,###').format(slip.netSalary)}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                         ],
                       ),
               ],
             ),
           ),
           const SizedBox(height: 20),
-          const Divider(),
+          Divider(color: isDark ? Colors.white.withOpacity(0.1) : null),
           const SizedBox(height: 12),
           _buildDetailRow('Role', slip.roleDisplay),
           _buildDetailRow('Status', slip.statusDisplay),
@@ -2663,35 +2894,38 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   }
 
   Widget _buildInfoItem(String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+        Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600], fontWeight: FontWeight.w500)),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black87)),
       ],
     );
   }
 
   Widget _buildInfoRow(String label, String value, {bool isBold = false}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+        Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600], fontWeight: FontWeight.w500)),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: Colors.black87)),
+        Text(value, style: TextStyle(fontSize: 16, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: isDark ? Colors.white : Colors.black87)),
       ],
     );
   }
 
   Widget _buildDetailRow(String label, String value, {bool isHighlight = false}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 120, child: Text(label, style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700], fontSize: 14))),
-          Expanded(child: Text(value, style: TextStyle(fontSize: isHighlight ? 16 : 14, fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal, color: isHighlight ? Colors.green[700] : Colors.black87))),
+          SizedBox(width: 120, child: Text(label, style: TextStyle(fontWeight: FontWeight.w500, color: isDark ? Colors.grey[400] : Colors.grey[700], fontSize: 14))),
+          Expanded(child: Text(value, style: TextStyle(fontSize: isHighlight ? 16 : 14, fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal, color: isHighlight ? (isDark ? const Color(0xFF10B981) : Colors.green[700]) : (isDark ? Colors.white70 : Colors.black87)))),
         ],
       ),
     );

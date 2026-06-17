@@ -176,12 +176,15 @@ export default function DirectProjectApprovals() {
                         <Chip
                           label={capitalize(project.priority) || 'Normal'}
                           size="small"
-                          sx={{
-                            width: 110,
-                            justifyContent: 'center',
-                            bgcolor: getPriorityBgColor(project.priority),
-                            color: getPriorityColor(project.priority),
-                            fontWeight: 600,
+                          sx={(theme) => {
+                            const isDark = theme.palette.mode === 'dark';
+                            return {
+                              width: 110,
+                              justifyContent: 'center',
+                              bgcolor: getPriorityBgColor(project.priority, isDark),
+                              color: getPriorityColor(project.priority, isDark),
+                              fontWeight: 600,
+                            };
                           }}
                         />
                       </TableCell>

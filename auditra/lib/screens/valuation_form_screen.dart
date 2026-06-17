@@ -12,6 +12,7 @@ import '../services/network_service.dart';
 import '../services/offline_db_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/pdf_service.dart';
+import '../services/offline_location_service.dart';
 import '../models/project_model.dart';
 import '../models/valuation_model.dart';
 import '../widgets/item_suggestions_widget.dart';
@@ -98,11 +99,6 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   int _primaryPhotoIndex = 0;       // Index of the photo marked as primary
   List<ValuationPhoto> _existingPhotos = []; // Photos already uploaded to the server
   int? _valuationId; // Non-null when editing an existing valuation
-
-  // Item suggestion panel state (Feature #10)
-  bool _showSuggestions = false;
-  String _lastSuggestionQuery = '';
-
   final ScrollController _scrollController = ScrollController();
 
   static const Map<String, String> _calculationMethodLabels = {
@@ -348,6 +344,791 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     super.dispose();
   }
 
+  void _autofillValuationForm(Map<String, dynamic> data) {
+    setState(() {
+      final title = data['title'] ?? data['description'] ?? '';
+      if (title.toString().isNotEmpty) {
+        _descriptionController.text = title.toString();
+      }
+      
+      final price = data['price'] ?? data['estimated_value'] ?? data['estimatedValue'];
+      if (price != null) {
+        _estimatedValueController.text = price.toString();
+      }
+      
+      final notes = data['notes'] ?? '';
+      if (notes.toString().isNotEmpty) {
+        _notesController.text = notes.toString();
+      }
+
+      final specs = data['specs'] is Map ? Map<String, dynamic>.from(data['specs']) : data;
+
+      if (_category == 'land') {
+        final landArea = specs['land_area'] ?? specs['landArea'];
+        if (landArea != null) _landAreaController.text = landArea.toString();
+
+        final landType = specs['land_type'] ?? specs['landType'];
+        if (landType != null) _landTypeController.text = landType.toString();
+
+        final landLocation = specs['land_location'] ?? specs['landLocation'];
+        if (landLocation != null) _landLocationController.text = landLocation.toString();
+
+        final lat = specs['land_latitude'] ?? specs['landLatitude'];
+        if (lat != null) _landLatitude = double.tryParse(lat.toString());
+
+        final lng = specs['land_longitude'] ?? specs['landLongitude'];
+        if (lng != null) _landLongitude = double.tryParse(lng.toString());
+
+        if (_landLatitude != null && _landLongitude != null) {
+          _landLocationController.text = '${_landLatitude!.toStringAsFixed(6)}, ${_landLongitude!.toStringAsFixed(6)}';
+        }
+      } else if (_category == 'building') {
+        final buildingArea = specs['building_area'] ?? specs['buildingArea'];
+        if (buildingArea != null) _buildingAreaController.text = buildingArea.toString();
+
+        final buildingType = specs['building_type'] ?? specs['buildingType'];
+        if (buildingType != null) _buildingTypeController.text = buildingType.toString();
+
+        final buildingLocation = specs['building_location'] ?? specs['buildingLocation'];
+        if (buildingLocation != null) _buildingLocationController.text = buildingLocation.toString();
+
+        final floors = specs['number_of_floors'] ?? specs['numberOfFloors'];
+        if (floors != null) _numberOfFloorsController.text = floors.toString();
+
+        final yearBuilt = specs['year_built'] ?? specs['yearBuilt'];
+        if (yearBuilt != null) _yearBuiltController.text = yearBuilt.toString();
+
+        final lat = specs['building_latitude'] ?? specs['buildingLatitude'];
+        if (lat != null) _buildingLatitude = double.tryParse(lat.toString());
+
+        final lng = specs['building_longitude'] ?? specs['buildingLongitude'];
+        if (lng != null) _buildingLongitude = double.tryParse(lng.toString());
+
+        if (_buildingLatitude != null && _buildingLongitude != null) {
+          _buildingLocationController.text = '${_buildingLatitude!.toStringAsFixed(6)}, ${_buildingLongitude!.toStringAsFixed(6)}';
+        }
+      } else if (_category == 'vehicle') {
+        final make = specs['vehicle_make'] ?? specs['vehicleMake'] ?? specs['make'];
+        if (make != null) _vehicleMakeController.text = make.toString();
+
+        final model = specs['vehicle_model'] ?? specs['vehicleModel'] ?? specs['model'];
+        if (model != null) _vehicleModelController.text = model.toString();
+
+        final year = specs['vehicle_year'] ?? specs['vehicleYear'] ?? specs['year'];
+        if (year != null) _vehicleYearController.text = year.toString();
+
+        final reg = specs['vehicle_registration_number'] ?? specs['vehicleRegistrationNumber'] ?? specs['registration_number'];
+        if (reg != null) _vehicleRegistrationController.text = reg.toString();
+
+        final mileage = specs['vehicle_mileage'] ?? specs['vehicleMileage'] ?? specs['mileage'];
+        if (mileage != null) _vehicleMileageController.text = mileage.toString();
+
+        final cond = specs['vehicle_condition'] ?? specs['vehicleCondition'] ?? specs['condition'];
+        if (cond != null) _vehicleConditionController.text = cond.toString();
+      } else if (_category == 'other') {
+        final otherType = specs['other_type'] ?? specs['otherType'] ?? specs['other_specifications'];
+        if (otherType != null) _otherTypeController.text = otherType.toString();
+
+        final specsText = specs['other_specifications'] ?? specs['otherSpecifications'] ?? specs['specs'];
+        if (specsText != null) _otherSpecificationsController.text = specsText.toString();
+      }
+    });
+  }
+
+  void _showSuggestionsBottomSheet(BuildContext context, String query) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isOnline = NetworkService.isOnline;
+
+    String selectedOption = ''; // '', 'reports', 'online'
+    List<dynamic> items = [];
+    bool isLoading = false;
+    String? errorMessage;
+    dynamic selectedItem;
+    bool showingDetails = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> fetchPreviousReports() async {
+              setModalState(() {
+                isLoading = true;
+                errorMessage = null;
+                items = [];
+              });
+              try {
+                final result = await ApiService.getValuations();
+                if (result['success']) {
+                  final List<dynamic> allValuations = result['data'] ?? [];
+                  final filtered = allValuations.where((val) {
+                    final catMatches = val['category'] == _category;
+                    final desc = (val['description'] ?? '').toString().toLowerCase();
+                    return catMatches && desc.contains(query.toLowerCase());
+                  }).toList();
+                  
+                  setModalState(() {
+                    items = filtered;
+                    isLoading = false;
+                  });
+                } else {
+                  setModalState(() {
+                    errorMessage = result['message'] ?? 'Failed to load previous reports';
+                    isLoading = false;
+                  });
+                }
+              } catch (e) {
+                setModalState(() {
+                  errorMessage = 'Error: $e';
+                  isLoading = false;
+                });
+              }
+            }
+
+            Future<void> fetchOnlineResults() async {
+              setModalState(() {
+                isLoading = true;
+                errorMessage = null;
+                items = [];
+              });
+              try {
+                final result = await ApiService.onlineSearch(query, _category);
+                if (result['success']) {
+                  setModalState(() {
+                    items = result['data'] ?? [];
+                    isLoading = false;
+                  });
+                } else {
+                  setModalState(() {
+                    errorMessage = result['message'] ?? 'Failed to load online search results';
+                    isLoading = false;
+                  });
+                }
+              } catch (e) {
+                setModalState(() {
+                  errorMessage = 'Error: $e';
+                  isLoading = false;
+                });
+              }
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(28),
+                  topRight: Radius.circular(28),
+                ),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF475569) : const Color(0xFFE5E7EB),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (selectedOption.isNotEmpty)
+                        IconButton(
+                          icon: Icon(Icons.arrow_back_rounded, color: isDark ? Colors.white70 : Colors.black54),
+                          onPressed: () {
+                            setModalState(() {
+                              if (showingDetails) {
+                                showingDetails = false;
+                                selectedItem = null;
+                              } else {
+                                selectedOption = '';
+                                items = [];
+                              }
+                            });
+                          },
+                        ),
+                      Expanded(
+                        child: Text(
+                          showingDetails 
+                            ? 'Item Details'
+                            : (selectedOption == 'reports' 
+                                ? 'Previous Reports' 
+                                : (selectedOption == 'online' ? 'Online Catalog' : 'Similar Suggestions')),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: isDark ? Colors.white : const Color(0xFF111827),
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : Colors.black54),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: showingDetails
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        (selectedItem['title'] ?? selectedItem['description'] ?? 'Untitled Item').toString(),
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark ? Colors.white : const Color(0xFF111827),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            selectedOption == 'reports' ? Icons.history_rounded : Icons.language_rounded,
+                                            size: 16,
+                                            color: const Color(0xFF00A3FF),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            selectedOption == 'reports' 
+                                                ? 'Source: Previous Valuation Report' 
+                                                : 'Source: ${selectedItem['source'] ?? "Online"}',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                _buildDetailRow(
+                                  label: 'Estimated Price (LKR)', 
+                                  value: (selectedItem['price'] ?? selectedItem['estimated_value'] ?? selectedItem['estimatedValue'] ?? 'N/A').toString(),
+                                  isDark: isDark,
+                                  isPrice: true,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Specifications',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : const Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._buildItemSpecsList(selectedItem, isDark),
+                                const SizedBox(height: 24),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(Icons.arrow_back_rounded),
+                                        label: const Text('Back'),
+                                        onPressed: () {
+                                          setModalState(() {
+                                            showingDetails = false;
+                                            selectedItem = null;
+                                          });
+                                        },
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          side: BorderSide(
+                                            color: isDark ? const Color(0xFF475569) : const Color(0xFFD1D5DB),
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.check_rounded),
+                                        label: const Text('Confirm & Use'),
+                                        onPressed: () {
+                                          _autofillValuationForm(selectedItem);
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Form successfully auto-filled with suggestions.'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF10B981),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            )
+                          : (selectedOption == ''
+                              ? (!isOnline
+                                  ? Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? const Color(0xFF2C1F15) : const Color(0xFFFFF7ED),
+                                        borderRadius: BorderRadius.circular(24),
+                                        border: Border.all(
+                                          color: isDark ? const Color(0xFF78350F) : const Color(0xFFFFEDD5),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              color: isDark ? const Color(0xFF78350F) : const Color(0xFFFFE0B2),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              Icons.wifi_off_rounded,
+                                              color: Colors.orange[800],
+                                              size: 48,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 20),
+                                          Text(
+                                            'You are in offline mode',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w900,
+                                              color: isDark ? Colors.white : const Color(0xFF111827),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Text(
+                                            'Connect to the internet to query similar items from previous reports or search the catalog online.',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              height: 1.5,
+                                              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : Column(
+                                      children: [
+                                        const SizedBox(height: 24),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: _buildChoiceCard(
+                                                title: 'Previous Reports',
+                                                subtitle: 'Find matching reports from DB',
+                                                icon: Icons.history_rounded,
+                                                isDark: isDark,
+                                                onTap: () {
+                                                  setModalState(() {
+                                                    selectedOption = 'reports';
+                                                  });
+                                                  fetchPreviousReports();
+                                                },
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: _buildChoiceCard(
+                                                title: 'Online Search',
+                                                subtitle: 'Search & scrape from internet',
+                                                icon: Icons.language_rounded,
+                                                isDark: isDark,
+                                                onTap: () {
+                                                  setModalState(() {
+                                                    selectedOption = 'online';
+                                                  });
+                                                  fetchOnlineResults();
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ))
+                              : (isLoading
+                                  ? Column(
+                                      children: const [
+                                        SizedBox(height: 60),
+                                        Center(child: CircularProgressIndicator()),
+                                        SizedBox(height: 60),
+                                      ],
+                                    )
+                                  : (errorMessage != null
+                                      ? Column(
+                                          children: [
+                                            const SizedBox(height: 24),
+                                            Text(
+                                              errorMessage!,
+                                              style: const TextStyle(color: Colors.red),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 24),
+                                          ],
+                                        )
+                                      : (items.isEmpty
+                                          ? Column(
+                                              children: [
+                                                const SizedBox(height: 60),
+                                                Center(
+                                                  child: Column(
+                                                    children: [
+                                                      Icon(Icons.search_off_rounded, size: 48, color: isDark ? Colors.grey[600] : Colors.grey[400]),
+                                                      const SizedBox(height: 12),
+                                                      Text(
+                                                        'No matching suggestions found',
+                                                        style: TextStyle(
+                                                          fontSize: 14,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 60),
+                                              ],
+                                            )
+                                          : ListView.separated(
+                                              shrinkWrap: true,
+                                              physics: const NeverScrollableScrollPhysics(),
+                                              itemCount: items.length,
+                                              separatorBuilder: (context, index) => const Divider(height: 1),
+                                              itemBuilder: (context, index) {
+                                                final item = items[index];
+                                                final title = (item['title'] ?? item['description'] ?? 'Untitled Item').toString();
+                                                final price = item['price'] ?? item['estimated_value'] ?? item['estimatedValue'];
+                                                final source = selectedOption == 'reports' 
+                                                    ? 'Previous Report' 
+                                                    : (item['source'] ?? 'Online');
+                                                
+                                                String priceStr = 'N/A';
+                                                if (price != null) {
+                                                  final numVal = double.tryParse(price.toString());
+                                                  if (numVal != null) {
+                                                    if (numVal >= 1000000) {
+                                                      priceStr = 'LKR ${(numVal / 1000000).toStringAsFixed(1)}M';
+                                                    } else if (numVal >= 100000) {
+                                                      priceStr = 'LKR ${(numVal / 100000).toStringAsFixed(0)} Lakhs';
+                                                    } else {
+                                                      priceStr = 'LKR $numVal';
+                                                    }
+                                                  }
+                                                }
+                                                
+                                                return ListTile(
+                                                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                                  title: Text(
+                                                    title,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isDark ? Colors.white : const Color(0xFF1F2937),
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  subtitle: Padding(
+                                                    padding: const EdgeInsets.only(top: 4.0),
+                                                    child: Row(
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(0xFF00A3FF).withOpacity(0.1),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            source,
+                                                            style: const TextStyle(
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Color(0xFF00A3FF),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        Text(
+                                                          'Price: $priceStr',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  trailing: Icon(
+                                                    Icons.chevron_right_rounded,
+                                                    color: isDark ? Colors.white54 : Colors.black45,
+                                                  ),
+                                                  onTap: () {
+                                                    setModalState(() {
+                                                      selectedItem = item;
+                                                      showingDetails = true;
+                                                    });
+                                                  },
+                                                );
+                                              },
+                                            )))))),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildChoiceCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      height: 160,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: const Color(0xFF00A3FF), size: 36),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow({
+    required String label,
+    required String value,
+    required bool isDark,
+    bool isPrice = false,
+  }) {
+    String displayValue = value;
+    if (isPrice && value != 'N/A') {
+      final numVal = double.tryParse(value);
+      if (numVal != null) {
+        displayValue = 'LKR ${numVal.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+          Text(
+            displayValue,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF111827),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildItemSpecsList(Map<String, dynamic> data, bool isDark) {
+    final specsList = <Widget>[];
+    final specs = data['specs'] is Map ? Map<String, dynamic>.from(data['specs']) : data;
+    
+    void addSpecRow(String label, dynamic val) {
+      if (val != null && val.toString().isNotEmpty) {
+        specsList.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  val.toString(),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF1F2937),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    if (_category == 'land') {
+      addSpecRow('Land Area (perches)', specs['land_area'] ?? specs['landArea']);
+      addSpecRow('Land Type', specs['land_type'] ?? specs['landType']);
+      addSpecRow('Land Location', specs['land_location'] ?? specs['landLocation']);
+      final lat = specs['land_latitude'] ?? specs['landLatitude'];
+      final lng = specs['land_longitude'] ?? specs['landLongitude'];
+      if (lat != null && lng != null) {
+        addSpecRow('Coordinates', '$lat, $lng');
+      }
+    } else if (_category == 'building') {
+      addSpecRow('Building Area (sqft)', specs['building_area'] ?? specs['buildingArea']);
+      addSpecRow('Building Type', specs['building_type'] ?? specs['buildingType']);
+      addSpecRow('Building Location', specs['building_location'] ?? specs['buildingLocation']);
+      addSpecRow('Floors', specs['number_of_floors'] ?? specs['numberOfFloors']);
+      addSpecRow('Year Built', specs['year_built'] ?? specs['yearBuilt']);
+      final lat = specs['building_latitude'] ?? specs['buildingLatitude'];
+      final lng = specs['building_longitude'] ?? specs['buildingLongitude'];
+      if (lat != null && lng != null) {
+        addSpecRow('Coordinates', '$lat, $lng');
+      }
+    } else if (_category == 'vehicle') {
+      addSpecRow('Make', specs['vehicle_make'] ?? specs['vehicleMake'] ?? specs['make']);
+      addSpecRow('Model', specs['vehicle_model'] ?? specs['vehicleModel'] ?? specs['model']);
+      addSpecRow('Year', specs['vehicle_year'] ?? specs['vehicleYear'] ?? specs['year']);
+      addSpecRow('Registration No.', specs['vehicle_registration_number'] ?? specs['vehicleRegistrationNumber'] ?? specs['registration_number']);
+      addSpecRow('Mileage (km)', specs['vehicle_mileage'] ?? specs['vehicleMileage'] ?? specs['mileage']);
+      addSpecRow('Condition', specs['vehicle_condition'] ?? specs['vehicleCondition'] ?? specs['condition']);
+    } else if (_category == 'other') {
+      addSpecRow('Type', specs['other_type'] ?? specs['otherType'] ?? specs['other_specifications']);
+      addSpecRow('Specifications', specs['other_specifications'] ?? specs['otherSpecifications'] ?? specs['specs']);
+    }
+    
+    if (specsList.isEmpty) {
+      specsList.add(
+        Text(
+          'No additional specifications available.',
+          style: TextStyle(
+            fontSize: 12,
+            fontStyle: FontStyle.italic,
+            color: isDark ? Colors.grey[500] : Colors.grey[500],
+          ),
+        ),
+      );
+    }
+    
+    return [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+          ),
+        ),
+        child: Column(
+          children: specsList,
+        ),
+      )
+    ];
+  }
+
   /// Compresses an image file to reduce upload size.
   ///
   /// Target quality is 75%, minimum size 1280x720 px.
@@ -451,48 +1232,16 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// Rounds coordinates to 6 decimal places to match the backend DecimalField precision.
   /// Called automatically on screen load for land/building, and when category changes.
   Future<void> _getCurrentLocation() async {
+    setState(() => _isLoading = true);
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location services are disabled.')),
-          );
-        }
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Location permissions are denied.')),
-            );
-          }
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permissions are permanently denied.')),
-          );
-        }
-        return;
-      }
-
-      setState(() => _isLoading = true);
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      final locData = await OfflineLocationService.getCurrentLocation();
+      final double lat = locData['latitude'] as double;
+      final double lng = locData['longitude'] as double;
+      final bool isDefault = locData['isDefault'] as bool;
 
       // Round to 6 decimal places to match backend DecimalField(max_digits=9, decimal_places=6)
-      final roundedLat = double.parse(position.latitude.toStringAsFixed(6));
-      final roundedLng = double.parse(position.longitude.toStringAsFixed(6));
+      final roundedLat = double.parse(lat.toStringAsFixed(6));
+      final roundedLng = double.parse(lng.toStringAsFixed(6));
       
       final locationText = '$roundedLat, $roundedLng';
 
@@ -514,8 +1263,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         setState(() {});
       }
 
-      // Location captured silently - no snackbar needed for automatic detection
-      // The location field will be updated automatically
+      if (isDefault && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Using default fallback location. Check GPS / permissions.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -1527,44 +2282,29 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
-                            icon: const Icon(Icons.lightbulb_outline),
-                            label: Text(_showSuggestions ? 'Hide suggestions' : 'Find similar items'),
+                            icon: const Icon(Icons.lightbulb_outline, color: Color(0xFF00A3FF)),
+                            label: const Text(
+                              'Find similar items',
+                              style: TextStyle(
+                                color: Color(0xFF00A3FF),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                             onPressed: () {
-                              setState(() {
-                                _showSuggestions = !_showSuggestions;
-                                _lastSuggestionQuery = _descriptionController.text.trim();
-                              });
+                              final query = _descriptionController.text.trim();
+                              if (query.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please enter a description first to find similar items.'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                                return;
+                              }
+                              _showSuggestionsBottomSheet(context, query);
                             },
                           ),
                         ),
-                        if (_showSuggestions && _descriptionController.text.trim().length >= 2)
-                          Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: ItemSuggestionsWidget(
-                              initialQuery: _lastSuggestionQuery,
-                              category: _category,
-                              onConfirm: (item) {
-                                setState(() {
-                                  _descriptionController.text = (item['title'] ?? '').toString();
-                                  _showSuggestions = false;
-                                });
-                              },
-                              onEdit: (edited) {
-                                setState(() {
-                                  _descriptionController.text = (edited['title'] ?? '').toString();
-                                  _showSuggestions = false;
-                                });
-                              },
-                              onCreateNew: () {
-                                setState(() => _showSuggestions = false);
-                              },
-                            ),
-                          ),
                         const SizedBox(height: 16),
                         _buildModernTextField(
                           _estimatedValueController,
@@ -1736,6 +2476,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// also triggers automatic GPS location detection.
   Widget _buildModernCategoryChip(String value, String label, IconData icon) {
     final isSelected = _category == value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: () {
         setState(() => _category = value);
@@ -1748,10 +2489,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue[50] : Colors.grey[50],
+          color: isSelected 
+              ? (isDark ? const Color(0xFF00A3FF).withOpacity(0.2) : Colors.blue[50]) 
+              : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? Colors.blue[600]! : Colors.grey[300]!,
+            color: isSelected 
+                ? (isDark ? const Color(0xFF00A3FF) : Colors.blue[600]!) 
+                : (isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]!),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -1761,7 +2506,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             Icon(
               icon,
               size: 20,
-              color: isSelected ? Colors.blue[700] : Colors.grey[600],
+              color: isSelected 
+                  ? (isDark ? const Color(0xFF00A3FF) : Colors.blue[700]) 
+                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
             ),
             const SizedBox(width: 8),
             Flexible(
@@ -1770,7 +2517,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected ? Colors.blue[900] : Colors.grey[700],
+                  color: isSelected 
+                      ? (isDark ? Colors.white : Colors.blue[900]) 
+                      : (isDark ? Colors.grey[300] : Colors.grey[700]),
                 ),
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
@@ -1778,7 +2527,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             ),
             if (isSelected) ...[
               const SizedBox(width: 4),
-              Icon(Icons.check_circle, color: Colors.blue[700], size: 18),
+              Icon(Icons.check_circle, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 18),
             ],
           ],
         ),
@@ -1914,6 +2663,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// Allows choosing type and method, entering rate and years, and triggering
   /// [_calculateNewPrice] to compute a new estimated value.
   Widget _buildPriceCalculationSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1921,23 +2671,23 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue[50],
+            color: isDark ? Colors.white.withOpacity(0.06) : Colors.blue[50],
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.blue[200]!, width: 1),
+            border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.blue[200]!, width: 1),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(Icons.calculate, color: Colors.blue[700], size: 20),
+                  Icon(Icons.calculate, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 20),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Price Calculation',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                 ],
@@ -2044,6 +2794,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// Resets the method and clears previous input fields on selection.
   Widget _buildCalculationTypeButton(String value, String label, IconData icon, Color color) {
     final isSelected = _calculationType == value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: () {
         setState(() {
@@ -2060,10 +2811,10 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.2) : Colors.white,
+          color: isSelected ? color.withOpacity(isDark ? 0.25 : 0.2) : (isDark ? Colors.white.withOpacity(0.05) : Colors.white),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? color : Colors.grey[300]!,
+            color: isSelected ? color : (isDark ? Colors.white.withOpacity(0.15) : Colors.grey[300]!),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -2073,7 +2824,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             Icon(
               icon,
               size: 20,
-              color: isSelected ? color : Colors.grey[600],
+              color: isSelected ? color : (isDark ? Colors.grey[400] : Colors.grey[600]),
             ),
             const SizedBox(width: 8),
             Flexible(
@@ -2082,7 +2833,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected ? color : Colors.grey[700],
+                  color: isSelected ? color : (isDark ? Colors.grey[300] : Colors.grey[700]),
                 ),
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
@@ -2198,6 +2949,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   /// Builds the land-specific input fields: area, type, and auto-detected location.
   Widget _buildLandFields() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2228,9 +2980,21 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _landLocationController,
-                style: const TextStyle(fontSize: 16),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.white : const Color(0xFF1C1E21),
+                  fontWeight: FontWeight.w500,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Location Coordinates',
+                  labelStyle: TextStyle(
+                    color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                    fontWeight: FontWeight.normal,
+                  ),
+                  floatingLabelStyle: const TextStyle(
+                    color: Color(0xFF00A3FF),
+                    fontWeight: FontWeight.w600,
+                  ),
                   prefixIcon: _isLoading
                       ? const SizedBox(
                           width: 20,
@@ -2240,14 +3004,32 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         )
-                      : Icon(Icons.location_on, color: Colors.blue[700]),
+                      : Icon(Icons.location_on, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 22),
                   hintText: _isLoading ? 'Detecting location...' : 'Location will be detected automatically',
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.grey[600] : const Color(0xFF94A3B8),
+                  ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE2E8F0),
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF00A3FF),
+                      width: 2,
+                    ),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  fillColor: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                 ),
                 readOnly: true,
               ),
@@ -2261,6 +3043,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   /// Builds the building-specific input fields: area, type, location, floors, and year built.
   Widget _buildBuildingFields() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2291,9 +3074,21 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _buildingLocationController,
-                style: const TextStyle(fontSize: 16),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.white : const Color(0xFF1C1E21),
+                  fontWeight: FontWeight.w500,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Location Coordinates',
+                  labelStyle: TextStyle(
+                    color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                    fontWeight: FontWeight.normal,
+                  ),
+                  floatingLabelStyle: const TextStyle(
+                    color: Color(0xFF00A3FF),
+                    fontWeight: FontWeight.w600,
+                  ),
                   prefixIcon: _isLoading
                       ? const SizedBox(
                           width: 20,
@@ -2303,14 +3098,32 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         )
-                      : Icon(Icons.location_on, color: Colors.blue[700]),
+                      : Icon(Icons.location_on, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 22),
                   hintText: _isLoading ? 'Detecting location...' : 'Location will be detected automatically',
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.grey[600] : const Color(0xFF94A3B8),
+                  ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE2E8F0),
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF00A3FF),
+                      width: 2,
+                    ),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  fillColor: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                 ),
                 readOnly: true,
               ),
@@ -2554,6 +3367,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// of new photos (with star-to-set-primary and delete actions), and thumbnails
   /// for already-uploaded server photos.
   Widget _buildPhotosSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2567,15 +3381,15 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.blue[300]!,
+                        color: isDark ? Colors.white.withOpacity(0.1) : Colors.blue[300]!,
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue.withOpacity(0.1),
+                          color: isDark ? Colors.black.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -2589,12 +3403,12 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.blue[50],
+                              color: isDark ? const Color(0xFF00A3FF).withOpacity(0.15) : Colors.blue[50],
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               Icons.photo_library_rounded,
-                              color: Colors.blue[700],
+                              color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700],
                               size: 32,
                             ),
                           ),
@@ -2614,15 +3428,15 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.blue[300]!,
+                        color: isDark ? Colors.white.withOpacity(0.1) : Colors.blue[300]!,
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue.withOpacity(0.1),
+                          color: isDark ? Colors.black.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -2636,12 +3450,12 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.blue[50],
+                              color: isDark ? const Color(0xFF00A3FF).withOpacity(0.15) : Colors.blue[50],
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               Icons.camera_alt_rounded,
-                              color: Colors.blue[700],
+                              color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700],
                               size: 32,
                             ),
                           ),
