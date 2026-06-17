@@ -14,7 +14,18 @@ let reconnectTimer = null;
 const handlers = new Set();
 
 function getWsUrl() {
-  const base = (import.meta.env.VITE_WS_URL || 'ws://localhost:8000').replace(/\/$/, '');
+  let base = import.meta.env.VITE_WS_URL;
+  if (!base) {
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      base = `${wsProtocol}//${window.location.host}`;
+    } else {
+      base = 'ws://localhost:8000';
+    }
+  } else if (window.location.protocol === 'https:' && base.startsWith('ws://')) {
+    base = base.replace(/^ws:\/\//i, 'wss://');
+  }
+  base = base.replace(/\/$/, '');
   return `${base}/ws/notifications/?token=${accessToken}`;
 }
 
