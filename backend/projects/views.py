@@ -65,15 +65,10 @@ def _format_payhere_amount(value):
 
 
 def _normalize_payhere_secret():
-    secret = str(getattr(settings, 'PAYHERE_MERCHANT_SECRET', '')).strip()
-    if not secret:
-        return ''
-
-    try:
-        decoded = base64.b64decode(secret, validate=True).decode('utf-8').strip()
-        return decoded or secret
-    except Exception:
-        return secret
+    """Return the merchant secret as-is from settings.
+    PayHere expects the raw secret string from the dashboard to be
+    MD5-hashed directly — no base64 decoding."""
+    return str(getattr(settings, 'PAYHERE_MERCHANT_SECRET', '')).strip()
 
 
 def _payhere_secret_hash():
