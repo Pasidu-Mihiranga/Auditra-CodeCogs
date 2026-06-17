@@ -6,6 +6,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/network_service.dart';
 import '../services/offline_db_service.dart';
@@ -101,6 +102,8 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   // Item suggestion panel state (Feature #10)
   bool _showSuggestions = false;
   String _lastSuggestionQuery = '';
+
+  final ScrollController _scrollController = ScrollController();
 
   static const Map<String, String> _calculationMethodLabels = {
     'simple_interest': 'Simple Interest',
@@ -341,6 +344,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     _rateController.dispose();
     _yearsController.dispose();
     _newPriceController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1141,6 +1145,133 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   ///   - A "Save Report" button (always visible).
   ///   - A "Submit to Accessor" button (only shown for draft/rejected reports
   ///     that have already been saved once).
+  // ─────────── Dynamic Island Header ───────────
+
+  Widget _buildDynamicIsland(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _scrollController,
+      builder: (context, child) {
+        double offset = 0;
+        if (_scrollController.hasClients) {
+          offset = _scrollController.offset.clamp(0.0, 100.0);
+        }
+        final factor = offset / 100.0;
+        final marginH = 16.0 + (16.0 * factor);
+        final topPadding = MediaQuery.of(context).padding.top;
+        final outerTopMargin = topPadding + 12.0;
+        final title = widget.existingValuation != null ? 'Edit Valuation' : 'New Valuation';
+
+        return Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: outerTopMargin,
+              left: marginH,
+              right: marginH,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(40),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                child: Container(
+                  height: kToolbarHeight + 8.0 - (8.0 * factor),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF00A3FF).withOpacity(0.55),
+                        const Color(0xFF0082FF).withOpacity(0.35),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2 + (0.1 * factor)),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: -30,
+                        right: -20,
+                        child: CircleAvatar(
+                          radius: 80,
+                          backgroundColor: Colors.white.withOpacity(0.12),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: -20,
+                        left: 30,
+                        child: CircleAvatar(
+                          radius: 40,
+                          backgroundColor: Colors.white.withOpacity(0.08),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          const SizedBox(width: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.25),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 8, offset: const Offset(0, 2)),
+                              ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () => Navigator.of(context).pop(),
+                                customBorder: const CircleBorder(),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(10.0),
+                                  child: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Colors.white),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  widget.project.title,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white.withOpacity(0.95),
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1184,145 +1315,108 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
     
+    final bgColor = isDark ? const Color(0xFF0B1220) : const Color(0xFFF4F7FB);
+    
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Form(
-        key: _formKey,
-        child: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              SliverAppBar(
-                expandedHeight: 140.0,
-                floating: false,
-                pinned: true,
-                backgroundColor: const Color(0xFF0D47A1),
-                elevation: 0,
-                flexibleSpace: FlexibleSpaceBar(
-                  titlePadding: const EdgeInsets.only(left: 56, bottom: 16),
-                  title: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        widget.existingValuation != null ? 'Edit Valuation' : 'New Valuation',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          shadows: [Shadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
-                        ),
+      extendBodyBehindAppBar: true,
+      backgroundColor: bgColor,
+      body: Stack(
+        children: [
+          // Main Content
+          SafeArea(
+            bottom: false,
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                controller: _scrollController,
+                padding: EdgeInsets.only(
+                  top: kToolbarHeight + 40,
+                  left: isSmallScreen ? 12 : 20,
+                  right: isSmallScreen ? 12 : 20,
+                  bottom: 120, // Space for floating bottom bar
+                ),
+                children: [
+                  // Project Info Card
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE6EEF8),
+                        width: 1.2,
                       ),
-                      Text(
-                        widget.project.title,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 11,
-                          fontWeight: FontWeight.normal,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                  background: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          right: -20,
-                          top: -20,
-                          child: Icon(
-                            widget.existingValuation != null ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
-                            color: Colors.white.withOpacity(0.1),
-                            size: 150,
-                          ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                  ),
-                ),
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ];
-          },
-          body: ListView(
-            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-            children: [
-              // Project Info Card
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    color: Theme.of(context).cardColor,
-                    child: Padding(
-                      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF1E293B) : Colors.blue[100],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(Icons.folder_open, color: isDark ? Colors.blue[200] : Colors.blue[700], size: 20),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Project Information',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDark ? Colors.white : Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      widget.project.title,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: isDark ? Colors.grey[300] : Colors.grey[700],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (widget.project.description != null) ...[
-                            const SizedBox(height: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
                             Container(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF0F172A) : Colors.grey[50],
-                                borderRadius: BorderRadius.circular(8),
+                                color: const Color(0xFF00A3FF).withOpacity(isDark ? 0.2 : 0.1),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(
-                                widget.project.description!,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: isDark ? Colors.grey[200] : Colors.grey[800],
-                                ),
+                              child: const Icon(Icons.folder_open_rounded, color: Color(0xFF00A3FF), size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Project Information',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark ? Colors.white : const Color(0xFF1C1E21),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.project.title,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark ? Colors.grey[400] : const Color(0xFF4F5B67),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
+                        ),
+                        if (widget.project.description != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF4F7FB),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isDark ? Colors.white.withOpacity(0.05) : Colors.transparent,
+                              ),
+                            ),
+                            child: Text(
+                              widget.project.description!,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                height: 1.5,
+                                color: isDark ? Colors.grey[300] : const Color(0xFF334155),
+                              ),
+                            ),
+                          ),
                         ],
-                      ),
+                      ],
                     ),
                   ),
                   // Show edit status banner if editing submitted valuation
@@ -1383,55 +1477,35 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   ],
                   const SizedBox(height: 16),
                   // Category Selection Card
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    color: Theme.of(context).cardColor,
-                    child: Padding(
-                      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.category, color: Colors.blue[700], size: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Category *',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildModernCategoryChip('land', 'Land', Icons.landscape),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildModernCategoryChip('building', 'Building', Icons.business),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildModernCategoryChip('vehicle', 'Vehicle', Icons.directions_car),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildModernCategoryChip('other', 'Other', Icons.category),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                  _buildSectionCard(
+                    title: 'Category *',
+                    icon: Icons.category,
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildModernCategoryChip('land', 'Land', Icons.landscape),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildModernCategoryChip('building', 'Building', Icons.business),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildModernCategoryChip('vehicle', 'Vehicle', Icons.directions_car),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildModernCategoryChip('other', 'Other', Icons.category),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1550,89 +1624,111 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                     child: _buildPhotosSection(),
                   ),
                   
-                  SizedBox(height: isSmallScreen ? 16 : 24),
-                  
-                  // Action Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: _isSubmitting ? null : () => _saveValuation(),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side: BorderSide(color: Colors.blue[400]!, width: 2),
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text(
-                              'Save Report',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                    ),
-                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          // Floating Bottom Action Bar
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 24,
+                bottom: MediaQuery.of(context).padding.bottom + 16,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    bgColor,
+                    bgColor.withOpacity(0.95),
+                    bgColor.withOpacity(0.8),
+                    bgColor.withOpacity(0.0),
+                  ],
+                  stops: const [0.0, 0.6, 0.8, 1.0],
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   if (_valuationId != null && (widget.existingValuation?.status == 'draft' || widget.existingValuation?.status == 'rejected')) ...[
-                    const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
+                      height: 54,
                       child: ElevatedButton(
                         onPressed: _isSubmitting ? null : () => _submitValuation(),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
+                          backgroundColor: const Color(0xFF10B981), // Green
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 4,
+                          shadowColor: const Color(0xFF10B981).withOpacity(0.4),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
                         child: _isSubmitting
                             ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                               )
                             : const Text(
                                 'Submit to Accessor',
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.3,
                                 ),
                               ),
                       ),
                     ),
+                    const SizedBox(height: 12),
                   ],
-                  SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : () => _saveValuation(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00A3FF),
+                        foregroundColor: Colors.white,
+                        elevation: 4,
+                        shadowColor: const Color(0xFF00A3FF).withOpacity(0.4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                            )
+                          : Text(
+                              _valuationId != null ? 'Update Valuation' : 'Save Valuation',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-        );
-  }
 
-  /// Legacy chip builder — replaced by [_buildModernCategoryChip].
-  Widget _buildCategoryChip(String value, String label, IconData icon) {
-    final isSelected = _category == value;
-    return FilterChip(
-      selected: isSelected,
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 4),
-          Text(label),
+          // Dynamic Island Header
+          _buildDynamicIsland(context),
         ],
       ),
-      onSelected: (selected) {
-        setState(() => _category = value);
-      },
     );
   }
 
@@ -1692,35 +1788,53 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   /// Wraps [child] in a styled card with a header showing [title] and [icon].
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenWidth < 360;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.blue[700]!, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE6EEF8),
+          width: 1.2,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00A3FF).withOpacity(isDark ? 0.2 : 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: const Color(0xFF00A3FF), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : const Color(0xFF1C1E21),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          child,
+        ],
       ),
     );
   }
@@ -1734,21 +1848,62 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return TextFormField(
       controller: controller,
-      style: const TextStyle(fontSize: 16),
+      style: TextStyle(
+        fontSize: 15,
+        color: isDark ? Colors.white : const Color(0xFF1C1E21),
+        fontWeight: FontWeight.w500,
+      ),
       autovalidateMode: AutovalidateMode.onUserInteraction,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: TextStyle(
+          color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+          fontWeight: FontWeight.normal,
+        ),
+        floatingLabelStyle: const TextStyle(
+          color: Color(0xFF00A3FF),
+          fontWeight: FontWeight.w600,
+        ),
         hintText: 'Enter $label',
-        prefixIcon: icon != null ? Icon(icon, color: Colors.blue[700]) : null,
+        hintStyle: TextStyle(
+          color: isDark ? Colors.grey[600] : const Color(0xFF94A3B8),
+        ),
+        prefixIcon: icon != null 
+          ? Icon(icon, color: isDark ? Colors.grey[400] : const Color(0xFF64748B), size: 22) 
+          : null,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE2E8F0),
+            width: 1.5,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: Color(0xFF00A3FF),
+            width: 2,
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: Color(0xFFEF4444),
+            width: 1.5,
+          ),
         ),
         filled: true,
-        fillColor: Colors.grey[50],
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        fillColor: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF8FAFC),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       ),
       maxLines: maxLines,
       keyboardType: keyboardType,
@@ -2037,19 +2192,6 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         ),
         backgroundColor: const Color(0xFF84BCDA),
         duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  /// Simple bold section title used within category detail cards.
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-        ),
       ),
     );
   }

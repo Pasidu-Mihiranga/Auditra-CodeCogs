@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
@@ -65,13 +66,39 @@ class NetworkService {
 
       // Only proceed with HTTP check if we have a network interface
       // Check actual internet access by making a lightweight request
+      if (kIsWeb) {
+        // On web, direct requests to google.com fail due to CORS.
+        // We query the backend API directly, which is configured for CORS origin access.
+        try {
+          await http
+              .get(Uri.parse('${ApiService.baseUrl}/auth/my-role/'))
+              .timeout(const Duration(seconds: 2));
+          return true;
+        } catch (e) {
+          print('Web HTTP connectivity check to backend failed: $e');
+          // If backend check fails (e.g., backend server is not running during development),
+          // check if we have general internet connectivity using a reliable CORS-enabled public endpoint
+          try {
+            await http
+                .get(Uri.parse('https://api.github.com'))
+                .timeout(const Duration(seconds: 2));
+            print('Web HTTP connectivity check fallback to public API succeeded');
+            return true;
+          } catch (e2) {
+            print('Web fallback HTTP connectivity check failed: $e2');
+            return false;
+          }
+        }
+      }
+
       // Using a reliable endpoint with short timeout
       try {
         final response = await http
             .get(Uri.parse('https://www.google.com'))
             .timeout(const Duration(seconds: 2));
         
-        return response.statusCode == 200;
+        // Any HTTP response indicates internet connectivity (even redirects or 404s)
+        return true;
       } catch (e) {
         // If Google fails, try backend API with shorter timeout
         try {

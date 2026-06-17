@@ -2,38 +2,39 @@ import 'package:flutter/material.dart';
 
 /// Centralized color palette for the application.
 class AppColors {
-  // Core Palette
-  static const Color primary = Color(0xFF1565C0);
-  static const Color primaryDark = Color(0xFF0D47A1);
-  static const Color primaryLight = Color(0xFF42A5F5);
-  static const Color secondary = Color(0xFF60A5FA);
-  static const Color accent = Color(0xFF3B82F6);
+  // Modern Clean Light Palette (with Light Blue accents)
+  static const Color primary = Color(0xFF1A1A1A); // Stark Dark
+  static const Color primaryDark = Color(0xFF0E0E10);
+  static const Color primaryLight = Color(0xFF333333);
+  static const Color secondary = Color(0xFF6B7280); // Cool Grey
+  static const Color accent = Color(0xFF00A3FF); // Vibrant Light Blue
+  static const Color accentLight = Color(0xFFE0F2FE); // Very Soft Blue
 
   // Light backgrounds
-  static const Color background = Color(0xFFF1F5F9);
+  static const Color background = Color(0xFFF9FAFB); // Clean off-white
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color cardInner = Color(0xFFF8FAFC);
+  static const Color cardInner = Color(0xFFF3F4F6);
   static const Color paper = Color(0xFFFFFFFF);
 
   // Text
-  static const Color text = Color(0xFF0F172A);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color textMuted = Color(0xFF94A3B8);
+  static const Color text = Color(0xFF111827); // Dark Charcoal
+  static const Color textSecondary = Color(0xFF6B7280); // Cool Grey
+  static const Color textMuted = Color(0xFF9CA3AF);
 
   // Status
-  static const Color success = Color(0xFF16A34A);
-  static const Color warning = Color(0xFFD97706);
-  static const Color error = Color(0xFFDC2626);
-  static const Color info = Color(0xFF2563EB);
+  static const Color success = Color(0xFF10B981); // Emerald Green
+  static const Color warning = Color(0xFFF59E0B); // Amber Orange
+  static const Color error = Color(0xFFEF4444); // Rose Red
+  static const Color info = Color(0xFF00A3FF);
 
   // UI
-  static const Color divider = Color(0xFFE2E8F0);
-  static const Color border = Color(0xFFE2E8F0);
-  static const Color shadow = Color(0x0F000000);
+  static const Color divider = Color(0xFFE5E7EB);
+  static const Color border = Color(0xFFE5E7EB);
+  static const Color shadow = Color(0x06000000);
 
-  static const Color headerText = Color(0xFF0F172A);
+  static const Color headerText = Color(0xFF111827);
   static const Color headerBg = Color(0xFFFFFFFF);
-  static const Color sidebarText = Color(0xFF64748B);
+  static const Color sidebarText = Color(0xFF6B7280);
 
   // Feature #8: Priority colors (mirrors web helpers.js)
   static Color priorityColor(String priority) {
@@ -120,7 +121,7 @@ class AppColors {
           fillColor: surface,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: divider)),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: divider)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: primary, width: 2)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: accent, width: 2)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
         dividerColor: divider,

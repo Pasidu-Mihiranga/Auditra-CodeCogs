@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/sync_engine.dart';
 import '../services/network_service.dart';
+import '../theme/app_colors.dart';
 
 /// A small pill-shaped badge displayed in the app bar that shows network and sync status.
 ///
@@ -217,19 +218,27 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
   /// calls [_handleManualSync].
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    final accentColor = isDark ? Colors.white : AppColors.accent;
+    final accentBg = isDark ? Colors.white.withOpacity(0.15) : AppColors.accent.withOpacity(0.1);
+    final accentBorder = isDark ? Colors.white.withOpacity(0.4) : AppColors.accent.withOpacity(0.25);
+
+    final offlineColor = isDark ? Colors.orangeAccent : Colors.orange[800]!;
+    final offlineBg = isDark ? Colors.orange.withOpacity(0.2) : Colors.orange.withOpacity(0.1);
+    final offlineBorder = isDark ? Colors.orangeAccent : Colors.orange.withOpacity(0.3);
+
+    final indicatorColor = _isOnline ? accentColor : offlineColor;
+
     return GestureDetector(
       onTap: _handleManualSync,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: _isOnline 
-              ? Colors.white.withOpacity(0.15) 
-              : Colors.orange.withOpacity(0.2),
+          color: _isOnline ? accentBg : offlineBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: _isOnline 
-                ? Colors.white.withOpacity(0.4) 
-                : Colors.orangeAccent,
+            color: _isOnline ? accentBorder : offlineBorder,
             width: 1,
           ),
         ),
@@ -243,15 +252,13 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        _isOnline ? Colors.white : Colors.white,
-                      ),
+                      valueColor: AlwaysStoppedAnimation<Color>(indicatorColor),
                     ),
                   )
                 : Icon(
                     _isOnline ? Icons.cloud_done : Icons.cloud_off,
                     size: 16,
-                    color: _isOnline ? Colors.white : Colors.orangeAccent,
+                    color: indicatorColor,
                   ),
             const SizedBox(width: 6),
             Text(
@@ -259,7 +266,7 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: _isOnline ? Colors.white : Colors.orangeAccent,
+                color: indicatorColor,
               ),
             ),
             if (_pendingCount > 0) ...[
