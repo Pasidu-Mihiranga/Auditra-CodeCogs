@@ -62,7 +62,8 @@ class HRWorkflowE2ETest(TestCase):
         self.assertEqual(balance.used_days, Decimal('2.0'))
 
         # Step 3: Salary Generation (Simulating the payment slip creation process)
-        basic_salary = self.employee.role.salary
+        employee_role = UserRole.objects.get(user=self.employee)
+        basic_salary = employee_role.salary
         epf_contribution = PaymentSlip.calculate_epf(basic_salary)
         allowances = PaymentSlip.calculate_allowances(basic_salary)
         
