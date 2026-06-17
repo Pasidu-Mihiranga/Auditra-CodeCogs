@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
-import 'home_screen.dart';
+import 'field_officer_dashboard.dart';
 import 'change_password_screen.dart';
 import 'forgot_password_screen.dart';
 import '../theme/app_colors.dart';
 import '../widgets/hero_slideshow.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String? restrictionRole;
+  const LoginScreen({super.key, this.restrictionRole});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -44,6 +46,11 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.restrictionRole != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showRestrictionBottomSheet(context, widget.restrictionRole!);
+      });
+    }
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
@@ -146,10 +153,23 @@ class _LoginScreenState extends State<LoginScreen>
     if (!mounted) return;
 
     if (result['success']) {
-      await ApiService.getMyRole();
+      final roleResult = await ApiService.getMyRole();
       final role = await ApiService.getUserRole();
 
       if (!mounted) return;
+
+      if (role != 'field_officer') {
+        final roleDisplay = (roleResult['success'] && roleResult['data'] != null)
+            ? (roleResult['data']['role_display'] ?? role)
+            : role;
+
+        await ApiService.logout();
+
+        if (!mounted) return;
+
+        _showRestrictionBottomSheet(context, roleDisplay ?? 'User');
+        return;
+      }
 
       final passwordChangeRequired = result['password_change_required'] == true;
 
@@ -171,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen>
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => HomeScreen(userRole: role ?? 'unassigned'),
+          builder: (_) => const FieldOfficerDashboard(),
         ),
       );
     } else {
@@ -652,6 +672,174 @@ class _LoginScreenState extends State<LoginScreen>
           );
         },
       ),
+    );
+  }
+
+  void _showRestrictionBottomSheet(BuildContext context, String roleDisplay) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: EdgeInsets.only(
+            left: 28,
+            right: 28,
+            top: 24,
+            bottom: MediaQuery.of(context).padding.bottom + 24,
+          ),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(32),
+              topRight: Radius.circular(32),
+            ),
+            border: Border.all(
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Pull bar
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF475569) : const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Icon with gradient matching attendance tab
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0EA5E9), Color(0xFF0284C7)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0284C7).withOpacity(0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.web_rounded,
+                  size: 64,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 28),
+              // Title
+              Text(
+                'Mobile App for Field Officers Only',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                  letterSpacing: -0.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              // Description
+              Text(
+                'This mobile app is designed exclusively for Field Officers.\n\n'
+                'As a $roleDisplay, please use the Auditra web application to access your dashboard and features.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.6,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF4B5563),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Open Web App Link Button (Interactive)
+              GestureDetector(
+                onTap: () async {
+                  final webUrl = Uri.parse('https://auditra.pasidumihiranga.me');
+                  try {
+                    await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+                  } catch (_) {}
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF0EA5E9).withOpacity(0.08)
+                        : const Color(0xFF0EA5E9).withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFF0EA5E9).withOpacity(0.4),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.link_rounded, color: Color(0xFF0EA5E9), size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Open Auditra Web App',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0EA5E9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Dismiss Button with gradient matching attendance tab
+              Container(
+                width: double.infinity,
+                height: 54,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0EA5E9), Color(0xFF0284C7)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0284C7).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'Dismiss',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
