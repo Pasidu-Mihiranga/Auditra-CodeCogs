@@ -68,10 +68,11 @@ class NetworkService {
       // Check actual internet access by making a lightweight request
       if (kIsWeb) {
         // On web, direct requests to google.com fail due to CORS.
-        // We query the backend API directly, which is configured for CORS origin access.
+        // Use a HEAD request to the base API URL to avoid 401 console errors
+        // from hitting protected endpoints without auth headers.
         try {
           await http
-              .get(Uri.parse('${ApiService.baseUrl}/auth/my-role/'))
+              .head(Uri.parse('${ApiService.baseUrl}/auth/login/'))
               .timeout(const Duration(seconds: 2));
           return true;
         } catch (e) {
@@ -101,12 +102,13 @@ class NetworkService {
         return true;
       } catch (e) {
         // If Google fails, try backend API with shorter timeout
+        // Use HEAD on login endpoint to avoid 401 console errors
         try {
           await http
-              .get(Uri.parse('${ApiService.baseUrl}/auth/my-role/'))
+              .head(Uri.parse('${ApiService.baseUrl}/auth/login/'))
               .timeout(const Duration(seconds: 2));
           
-          // Even if unauthorized, it means we have connectivity
+          // Any response means we have connectivity
           return true;
         } catch (e2) {
           // Both failed, no internet connectivity

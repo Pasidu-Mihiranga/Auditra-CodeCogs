@@ -234,7 +234,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() { _uploading = false; });
     if (res['success'] == true) {
       final url = (res['data'] as Map?)?['profile_image_url'] as String?;
-      setState(() { _avatarUrl = url; });
+      setState(() { _avatarUrl = url != null ? '$url?v=${DateTime.now().millisecondsSinceEpoch}' : null; });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Avatar updated'), backgroundColor: AppColors.success),
       );
