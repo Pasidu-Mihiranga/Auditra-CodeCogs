@@ -30,6 +30,7 @@ export default function Layout() {
   const [anchorEl, setAnchorEl] = useState(null);
 
   const resolvedRole = resolveRoleKey(role);
+  const isAdmin = resolvedRole === 'admin';
   const menuItems = roleMenuConfig[resolvedRole] || roleMenuConfig.unassigned;
   const currentWidth = isMobile ? DRAWER_WIDTH : (collapsed ? DRAWER_COLLAPSED : DRAWER_WIDTH);
   const c = theme.palette.custom;
@@ -43,9 +44,9 @@ export default function Layout() {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Brand */}
       <Box sx={{
-        p: collapsed && !isMobile ? 1.5 : 2,
+        p: collapsed && !isMobile ? 1.5 : (isAdmin ? 1 : 2),
         textAlign: 'center',
-        minHeight: 72,
+        minHeight: collapsed && !isMobile ? 72 : (isAdmin ? 52 : 72),
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
@@ -57,7 +58,7 @@ export default function Layout() {
           alt="Auditra"
           sx={{
             width: '100%',
-            maxWidth: collapsed && !isMobile ? 36 : 140,
+            maxWidth: collapsed && !isMobile ? 36 : (isAdmin ? 110 : 140),
             height: (collapsed && !isMobile) ? 40 : 'auto',
             objectFit: (collapsed && !isMobile) ? 'cover' : 'contain',
             objectPosition: 'left',
@@ -70,12 +71,19 @@ export default function Layout() {
 
       {/* User info */}
       <Box
-        sx={{ p: collapsed && !isMobile ? 1.5 : 2, display: 'flex', alignItems: 'center', gap: 1.5, justifyContent: collapsed && !isMobile ? 'center' : 'flex-start', cursor: 'pointer' }}
+        sx={{
+          p: collapsed && !isMobile ? 1.5 : (isAdmin ? 1 : 2),
+          display: 'flex',
+          alignItems: 'center',
+          gap: isAdmin ? 1 : 1.5,
+          justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
+          cursor: 'pointer'
+        }}
         onClick={() => navigate('/dashboard/profile')}
       >
         <UserAvatar
           user={user}
-          size={38}
+          size={isAdmin ? 32 : 38}
           sx={{ border: `1.5px solid ${c.sidebarAvatarBorder}`, bgcolor: c.sidebarAvatarBg, flexShrink: 0 }}
         />
         {(!collapsed || isMobile) && (
@@ -95,12 +103,16 @@ export default function Layout() {
       <Divider sx={{ borderColor: c.sidebarDivider }} />
 
       {/* Navigation */}
-      <List sx={{ flex: 1, px: collapsed && !isMobile ? 0.5 : 1, py: 1 }}>
+      <List sx={{
+        flex: 1,
+        px: collapsed && !isMobile ? 0.5 : (isAdmin ? 0.5 : 1),
+        py: isAdmin ? 0.5 : 1
+      }}>
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
           const button = (
-            <ListItem key={item.path} disablePadding sx={{ mb: 0.5 }}>
+            <ListItem key={item.path} disablePadding sx={{ mb: isAdmin ? 0.2 : 0.5 }}>
               <ListItemButton
                 onClick={() => {
                   navigate(item.path);
@@ -108,9 +120,10 @@ export default function Layout() {
                 }}
                 sx={{
                   borderRadius: 2,
-                  minHeight: 44,
+                  minHeight: isAdmin ? 34 : 44,
                   justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
-                  px: collapsed && !isMobile ? 1.5 : 2,
+                  px: collapsed && !isMobile ? 1.5 : (isAdmin ? 1.5 : 2),
+                  py: isAdmin ? 0.4 : 'auto',
                   bgcolor: isActive ? c.sidebarActive : 'transparent',
                   '&:hover': { bgcolor: c.sidebarHover },
                 }}
@@ -118,7 +131,7 @@ export default function Layout() {
                 <ListItemIcon
                   sx={{
                     color: isActive ? c.sidebarAccent : c.sidebarText,
-                    minWidth: collapsed && !isMobile ? 0 : 40,
+                    minWidth: collapsed && !isMobile ? 0 : (isAdmin ? 32 : 40),
                     justifyContent: 'center',
                   }}
                 >
@@ -128,7 +141,7 @@ export default function Layout() {
                   <ListItemText
                     primary={item.label}
                     primaryTypographyProps={{
-                      fontSize: 14,
+                      fontSize: isAdmin ? 13 : 14,
                       fontWeight: isActive ? 600 : 400,
                       color: isActive ? c.sidebarTextActive : c.sidebarText,
                     }}
@@ -150,46 +163,52 @@ export default function Layout() {
       <Divider sx={{ borderColor: c.sidebarDivider }} />
 
       {/* Bottom section */}
-      <List sx={{ px: collapsed && !isMobile ? 0.5 : 1, pb: 2 }}>
+      <List sx={{
+        px: collapsed && !isMobile ? 0.5 : (isAdmin ? 0.5 : 1),
+        pb: isAdmin ? 1 : 2,
+        pt: isAdmin ? 0.5 : 1
+      }}>
         {/* Collapse toggle (desktop only) */}
         {!isMobile && (
-          <ListItem disablePadding sx={{ mb: 0.5 }}>
+          <ListItem disablePadding sx={{ mb: isAdmin ? 0.2 : 0.5 }}>
             <ListItemButton
               onClick={() => setCollapsed(!collapsed)}
               sx={{
                 borderRadius: 2,
-                minHeight: 44,
+                minHeight: isAdmin ? 34 : 44,
                 justifyContent: collapsed ? 'center' : 'flex-start',
-                px: collapsed ? 1.5 : 2,
+                px: collapsed ? 1.5 : (isAdmin ? 1.5 : 2),
+                py: isAdmin ? 0.4 : 'auto',
                 '&:hover': { bgcolor: c.sidebarHover },
               }}
             >
-              <ListItemIcon sx={{ color: c.sidebarCollapseText, minWidth: collapsed ? 0 : 40, justifyContent: 'center' }}>
+              <ListItemIcon sx={{ color: c.sidebarCollapseText, minWidth: collapsed ? 0 : (isAdmin ? 32 : 40), justifyContent: 'center' }}>
                 {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
               </ListItemIcon>
               {!collapsed && (
-                <ListItemText primary="Collapse" primaryTypographyProps={{ fontSize: 14, color: c.sidebarCollapseText }} />
+                <ListItemText primary="Collapse" primaryTypographyProps={{ fontSize: isAdmin ? 13 : 14, color: c.sidebarCollapseText }} />
               )}
             </ListItemButton>
           </ListItem>
         )}
-        <ListItem disablePadding>
+        <ListItem disablePadding sx={{ mb: isAdmin ? 0.2 : 0.5 }}>
           <Tooltip title={collapsed && !isMobile ? 'Logout' : ''} placement="right">
             <ListItemButton
               onClick={handleLogout}
               sx={{
                 borderRadius: 2,
-                minHeight: 44,
+                minHeight: isAdmin ? 34 : 44,
                 justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
-                px: collapsed && !isMobile ? 1.5 : 2,
+                px: collapsed && !isMobile ? 1.5 : (isAdmin ? 1.5 : 2),
+                py: isAdmin ? 0.4 : 'auto',
                 '&:hover': { bgcolor: c.sidebarLogoutHover },
               }}
             >
-              <ListItemIcon sx={{ color: c.sidebarLogout, minWidth: collapsed && !isMobile ? 0 : 40, justifyContent: 'center' }}>
+              <ListItemIcon sx={{ color: c.sidebarLogout, minWidth: collapsed && !isMobile ? 0 : (isAdmin ? 32 : 40), justifyContent: 'center' }}>
                 <LogoutIcon fontSize="small" />
               </ListItemIcon>
               {(!collapsed || isMobile) && (
-                <ListItemText primary="Logout" primaryTypographyProps={{ fontSize: 14, color: c.sidebarLogout }} />
+                <ListItemText primary="Logout" primaryTypographyProps={{ fontSize: isAdmin ? 13 : 14, color: c.sidebarLogout }} />
               )}
             </ListItemButton>
           </Tooltip>
@@ -205,7 +224,15 @@ export default function Layout() {
           variant="temporary"
           open={mobileOpen}
           onClose={() => setMobileOpen(false)}
-          sx={{ '& .MuiDrawer-paper': { width: DRAWER_WIDTH } }}
+          sx={{
+            '& .MuiDrawer-paper': {
+              width: DRAWER_WIDTH,
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': {
+                display: 'none',
+              },
+            }
+          }}
         >
           {drawerContent}
         </Drawer>
@@ -219,6 +246,10 @@ export default function Layout() {
               width: currentWidth,
               transition: 'width 0.25s ease',
               overflowX: 'hidden',
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': {
+                display: 'none',
+              },
             },
           }}
         >
