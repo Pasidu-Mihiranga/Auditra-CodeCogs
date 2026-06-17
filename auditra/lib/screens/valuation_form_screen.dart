@@ -99,11 +99,6 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   int _primaryPhotoIndex = 0;       // Index of the photo marked as primary
   List<ValuationPhoto> _existingPhotos = []; // Photos already uploaded to the server
   int? _valuationId; // Non-null when editing an existing valuation
-
-  // Item suggestion panel state (Feature #10)
-  bool _showSuggestions = false;
-  String _lastSuggestionQuery = '';
-
   final ScrollController _scrollController = ScrollController();
 
   static const Map<String, String> _calculationMethodLabels = {
@@ -347,6 +342,791 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     _newPriceController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _autofillValuationForm(Map<String, dynamic> data) {
+    setState(() {
+      final title = data['title'] ?? data['description'] ?? '';
+      if (title.toString().isNotEmpty) {
+        _descriptionController.text = title.toString();
+      }
+      
+      final price = data['price'] ?? data['estimated_value'] ?? data['estimatedValue'];
+      if (price != null) {
+        _estimatedValueController.text = price.toString();
+      }
+      
+      final notes = data['notes'] ?? '';
+      if (notes.toString().isNotEmpty) {
+        _notesController.text = notes.toString();
+      }
+
+      final specs = data['specs'] is Map ? Map<String, dynamic>.from(data['specs']) : data;
+
+      if (_category == 'land') {
+        final landArea = specs['land_area'] ?? specs['landArea'];
+        if (landArea != null) _landAreaController.text = landArea.toString();
+
+        final landType = specs['land_type'] ?? specs['landType'];
+        if (landType != null) _landTypeController.text = landType.toString();
+
+        final landLocation = specs['land_location'] ?? specs['landLocation'];
+        if (landLocation != null) _landLocationController.text = landLocation.toString();
+
+        final lat = specs['land_latitude'] ?? specs['landLatitude'];
+        if (lat != null) _landLatitude = double.tryParse(lat.toString());
+
+        final lng = specs['land_longitude'] ?? specs['landLongitude'];
+        if (lng != null) _landLongitude = double.tryParse(lng.toString());
+
+        if (_landLatitude != null && _landLongitude != null) {
+          _landLocationController.text = '${_landLatitude!.toStringAsFixed(6)}, ${_landLongitude!.toStringAsFixed(6)}';
+        }
+      } else if (_category == 'building') {
+        final buildingArea = specs['building_area'] ?? specs['buildingArea'];
+        if (buildingArea != null) _buildingAreaController.text = buildingArea.toString();
+
+        final buildingType = specs['building_type'] ?? specs['buildingType'];
+        if (buildingType != null) _buildingTypeController.text = buildingType.toString();
+
+        final buildingLocation = specs['building_location'] ?? specs['buildingLocation'];
+        if (buildingLocation != null) _buildingLocationController.text = buildingLocation.toString();
+
+        final floors = specs['number_of_floors'] ?? specs['numberOfFloors'];
+        if (floors != null) _numberOfFloorsController.text = floors.toString();
+
+        final yearBuilt = specs['year_built'] ?? specs['yearBuilt'];
+        if (yearBuilt != null) _yearBuiltController.text = yearBuilt.toString();
+
+        final lat = specs['building_latitude'] ?? specs['buildingLatitude'];
+        if (lat != null) _buildingLatitude = double.tryParse(lat.toString());
+
+        final lng = specs['building_longitude'] ?? specs['buildingLongitude'];
+        if (lng != null) _buildingLongitude = double.tryParse(lng.toString());
+
+        if (_buildingLatitude != null && _buildingLongitude != null) {
+          _buildingLocationController.text = '${_buildingLatitude!.toStringAsFixed(6)}, ${_buildingLongitude!.toStringAsFixed(6)}';
+        }
+      } else if (_category == 'vehicle') {
+        final make = specs['vehicle_make'] ?? specs['vehicleMake'] ?? specs['make'];
+        if (make != null) _vehicleMakeController.text = make.toString();
+
+        final model = specs['vehicle_model'] ?? specs['vehicleModel'] ?? specs['model'];
+        if (model != null) _vehicleModelController.text = model.toString();
+
+        final year = specs['vehicle_year'] ?? specs['vehicleYear'] ?? specs['year'];
+        if (year != null) _vehicleYearController.text = year.toString();
+
+        final reg = specs['vehicle_registration_number'] ?? specs['vehicleRegistrationNumber'] ?? specs['registration_number'];
+        if (reg != null) _vehicleRegistrationController.text = reg.toString();
+
+        final mileage = specs['vehicle_mileage'] ?? specs['vehicleMileage'] ?? specs['mileage'];
+        if (mileage != null) _vehicleMileageController.text = mileage.toString();
+
+        final cond = specs['vehicle_condition'] ?? specs['vehicleCondition'] ?? specs['condition'];
+        if (cond != null) _vehicleConditionController.text = cond.toString();
+      } else if (_category == 'other') {
+        final otherType = specs['other_type'] ?? specs['otherType'] ?? specs['other_specifications'];
+        if (otherType != null) _otherTypeController.text = otherType.toString();
+
+        final specsText = specs['other_specifications'] ?? specs['otherSpecifications'] ?? specs['specs'];
+        if (specsText != null) _otherSpecificationsController.text = specsText.toString();
+      }
+    });
+  }
+
+  void _showSuggestionsBottomSheet(BuildContext context, String query) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isOnline = NetworkService.isOnline;
+
+    String selectedOption = ''; // '', 'reports', 'online'
+    List<dynamic> items = [];
+    bool isLoading = false;
+    String? errorMessage;
+    dynamic selectedItem;
+    bool showingDetails = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> fetchPreviousReports() async {
+              setModalState(() {
+                isLoading = true;
+                errorMessage = null;
+                items = [];
+              });
+              try {
+                final result = await ApiService.getValuations();
+                if (result['success']) {
+                  final List<dynamic> allValuations = result['data'] ?? [];
+                  final filtered = allValuations.where((val) {
+                    final catMatches = val['category'] == _category;
+                    final desc = (val['description'] ?? '').toString().toLowerCase();
+                    return catMatches && desc.contains(query.toLowerCase());
+                  }).toList();
+                  
+                  setModalState(() {
+                    items = filtered;
+                    isLoading = false;
+                  });
+                } else {
+                  setModalState(() {
+                    errorMessage = result['message'] ?? 'Failed to load previous reports';
+                    isLoading = false;
+                  });
+                }
+              } catch (e) {
+                setModalState(() {
+                  errorMessage = 'Error: $e';
+                  isLoading = false;
+                });
+              }
+            }
+
+            Future<void> fetchOnlineResults() async {
+              setModalState(() {
+                isLoading = true;
+                errorMessage = null;
+                items = [];
+              });
+              try {
+                final result = await ApiService.onlineSearch(query, _category);
+                if (result['success']) {
+                  setModalState(() {
+                    items = result['data'] ?? [];
+                    isLoading = false;
+                  });
+                } else {
+                  setModalState(() {
+                    errorMessage = result['message'] ?? 'Failed to load online search results';
+                    isLoading = false;
+                  });
+                }
+              } catch (e) {
+                setModalState(() {
+                  errorMessage = 'Error: $e';
+                  isLoading = false;
+                });
+              }
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(28),
+                  topRight: Radius.circular(28),
+                ),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF475569) : const Color(0xFFE5E7EB),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (selectedOption.isNotEmpty)
+                        IconButton(
+                          icon: Icon(Icons.arrow_back_rounded, color: isDark ? Colors.white70 : Colors.black54),
+                          onPressed: () {
+                            setModalState(() {
+                              if (showingDetails) {
+                                showingDetails = false;
+                                selectedItem = null;
+                              } else {
+                                selectedOption = '';
+                                items = [];
+                              }
+                            });
+                          },
+                        ),
+                      Expanded(
+                        child: Text(
+                          showingDetails 
+                            ? 'Item Details'
+                            : (selectedOption == 'reports' 
+                                ? 'Previous Reports' 
+                                : (selectedOption == 'online' ? 'Online Catalog' : 'Similar Suggestions')),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: isDark ? Colors.white : const Color(0xFF111827),
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : Colors.black54),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: showingDetails
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        (selectedItem['title'] ?? selectedItem['description'] ?? 'Untitled Item').toString(),
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark ? Colors.white : const Color(0xFF111827),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            selectedOption == 'reports' ? Icons.history_rounded : Icons.language_rounded,
+                                            size: 16,
+                                            color: const Color(0xFF00A3FF),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            selectedOption == 'reports' 
+                                                ? 'Source: Previous Valuation Report' 
+                                                : 'Source: ${selectedItem['source'] ?? "Online"}',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                _buildDetailRow(
+                                  label: 'Estimated Price (LKR)', 
+                                  value: (selectedItem['price'] ?? selectedItem['estimated_value'] ?? selectedItem['estimatedValue'] ?? 'N/A').toString(),
+                                  isDark: isDark,
+                                  isPrice: true,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Specifications',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : const Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._buildItemSpecsList(selectedItem, isDark),
+                                const SizedBox(height: 24),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(Icons.arrow_back_rounded),
+                                        label: const Text('Back'),
+                                        onPressed: () {
+                                          setModalState(() {
+                                            showingDetails = false;
+                                            selectedItem = null;
+                                          });
+                                        },
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          side: BorderSide(
+                                            color: isDark ? const Color(0xFF475569) : const Color(0xFFD1D5DB),
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.check_rounded),
+                                        label: const Text('Confirm & Use'),
+                                        onPressed: () {
+                                          _autofillValuationForm(selectedItem);
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Form successfully auto-filled with suggestions.'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF10B981),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            )
+                          : (selectedOption == ''
+                              ? (!isOnline
+                                  ? Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? const Color(0xFF2C1F15) : const Color(0xFFFFF7ED),
+                                        borderRadius: BorderRadius.circular(24),
+                                        border: Border.all(
+                                          color: isDark ? const Color(0xFF78350F) : const Color(0xFFFFEDD5),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              color: isDark ? const Color(0xFF78350F) : const Color(0xFFFFE0B2),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              Icons.wifi_off_rounded,
+                                              color: Colors.orange[800],
+                                              size: 48,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 20),
+                                          Text(
+                                            'You are in offline mode',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w900,
+                                              color: isDark ? Colors.white : const Color(0xFF111827),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Text(
+                                            'Connect to the internet to query similar items from previous reports or search the catalog online.',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              height: 1.5,
+                                              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : Column(
+                                      children: [
+                                        const SizedBox(height: 24),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: _buildChoiceCard(
+                                                title: 'Previous Reports',
+                                                subtitle: 'Find matching reports from DB',
+                                                icon: Icons.history_rounded,
+                                                isDark: isDark,
+                                                onTap: () {
+                                                  setModalState(() {
+                                                    selectedOption = 'reports';
+                                                  });
+                                                  fetchPreviousReports();
+                                                },
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: _buildChoiceCard(
+                                                title: 'Online Search',
+                                                subtitle: 'Search & scrape from internet',
+                                                icon: Icons.language_rounded,
+                                                isDark: isDark,
+                                                onTap: () {
+                                                  setModalState(() {
+                                                    selectedOption = 'online';
+                                                  });
+                                                  fetchOnlineResults();
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ))
+                              : (isLoading
+                                  ? Column(
+                                      children: const [
+                                        SizedBox(height: 60),
+                                        Center(child: CircularProgressIndicator()),
+                                        SizedBox(height: 60),
+                                      ],
+                                    )
+                                  : (errorMessage != null
+                                      ? Column(
+                                          children: [
+                                            const SizedBox(height: 24),
+                                            Text(
+                                              errorMessage!,
+                                              style: const TextStyle(color: Colors.red),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 24),
+                                          ],
+                                        )
+                                      : (items.isEmpty
+                                          ? Column(
+                                              children: [
+                                                const SizedBox(height: 60),
+                                                Center(
+                                                  child: Column(
+                                                    children: [
+                                                      Icon(Icons.search_off_rounded, size: 48, color: isDark ? Colors.grey[600] : Colors.grey[400]),
+                                                      const SizedBox(height: 12),
+                                                      Text(
+                                                        'No matching suggestions found',
+                                                        style: TextStyle(
+                                                          fontSize: 14,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 60),
+                                              ],
+                                            )
+                                          : ListView.separated(
+                                              shrinkWrap: true,
+                                              physics: const NeverScrollableScrollPhysics(),
+                                              itemCount: items.length,
+                                              separatorBuilder: (context, index) => const Divider(height: 1),
+                                              itemBuilder: (context, index) {
+                                                final item = items[index];
+                                                final title = (item['title'] ?? item['description'] ?? 'Untitled Item').toString();
+                                                final price = item['price'] ?? item['estimated_value'] ?? item['estimatedValue'];
+                                                final source = selectedOption == 'reports' 
+                                                    ? 'Previous Report' 
+                                                    : (item['source'] ?? 'Online');
+                                                
+                                                String priceStr = 'N/A';
+                                                if (price != null) {
+                                                  final numVal = double.tryParse(price.toString());
+                                                  if (numVal != null) {
+                                                    if (numVal >= 1000000) {
+                                                      priceStr = 'LKR ${(numVal / 1000000).toStringAsFixed(1)}M';
+                                                    } else if (numVal >= 100000) {
+                                                      priceStr = 'LKR ${(numVal / 100000).toStringAsFixed(0)} Lakhs';
+                                                    } else {
+                                                      priceStr = 'LKR $numVal';
+                                                    }
+                                                  }
+                                                }
+                                                
+                                                return ListTile(
+                                                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                                  title: Text(
+                                                    title,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isDark ? Colors.white : const Color(0xFF1F2937),
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  subtitle: Padding(
+                                                    padding: const EdgeInsets.only(top: 4.0),
+                                                    child: Row(
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(0xFF00A3FF).withOpacity(0.1),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            source,
+                                                            style: const TextStyle(
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Color(0xFF00A3FF),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        Text(
+                                                          'Price: $priceStr',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  trailing: Icon(
+                                                    Icons.chevron_right_rounded,
+                                                    color: isDark ? Colors.white54 : Colors.black45,
+                                                  ),
+                                                  onTap: () {
+                                                    setModalState(() {
+                                                      selectedItem = item;
+                                                      showingDetails = true;
+                                                    });
+                                                  },
+                                                );
+                                              },
+                                            )))))),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildChoiceCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      height: 160,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: const Color(0xFF00A3FF), size: 36),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow({
+    required String label,
+    required String value,
+    required bool isDark,
+    bool isPrice = false,
+  }) {
+    String displayValue = value;
+    if (isPrice && value != 'N/A') {
+      final numVal = double.tryParse(value);
+      if (numVal != null) {
+        displayValue = 'LKR ${numVal.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+          Text(
+            displayValue,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF111827),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildItemSpecsList(Map<String, dynamic> data, bool isDark) {
+    final specsList = <Widget>[];
+    final specs = data['specs'] is Map ? Map<String, dynamic>.from(data['specs']) : data;
+    
+    void addSpecRow(String label, dynamic val) {
+      if (val != null && val.toString().isNotEmpty) {
+        specsList.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  val.toString(),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF1F2937),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    if (_category == 'land') {
+      addSpecRow('Land Area (perches)', specs['land_area'] ?? specs['landArea']);
+      addSpecRow('Land Type', specs['land_type'] ?? specs['landType']);
+      addSpecRow('Land Location', specs['land_location'] ?? specs['landLocation']);
+      final lat = specs['land_latitude'] ?? specs['landLatitude'];
+      final lng = specs['land_longitude'] ?? specs['landLongitude'];
+      if (lat != null && lng != null) {
+        addSpecRow('Coordinates', '$lat, $lng');
+      }
+    } else if (_category == 'building') {
+      addSpecRow('Building Area (sqft)', specs['building_area'] ?? specs['buildingArea']);
+      addSpecRow('Building Type', specs['building_type'] ?? specs['buildingType']);
+      addSpecRow('Building Location', specs['building_location'] ?? specs['buildingLocation']);
+      addSpecRow('Floors', specs['number_of_floors'] ?? specs['numberOfFloors']);
+      addSpecRow('Year Built', specs['year_built'] ?? specs['yearBuilt']);
+      final lat = specs['building_latitude'] ?? specs['buildingLatitude'];
+      final lng = specs['building_longitude'] ?? specs['buildingLongitude'];
+      if (lat != null && lng != null) {
+        addSpecRow('Coordinates', '$lat, $lng');
+      }
+    } else if (_category == 'vehicle') {
+      addSpecRow('Make', specs['vehicle_make'] ?? specs['vehicleMake'] ?? specs['make']);
+      addSpecRow('Model', specs['vehicle_model'] ?? specs['vehicleModel'] ?? specs['model']);
+      addSpecRow('Year', specs['vehicle_year'] ?? specs['vehicleYear'] ?? specs['year']);
+      addSpecRow('Registration No.', specs['vehicle_registration_number'] ?? specs['vehicleRegistrationNumber'] ?? specs['registration_number']);
+      addSpecRow('Mileage (km)', specs['vehicle_mileage'] ?? specs['vehicleMileage'] ?? specs['mileage']);
+      addSpecRow('Condition', specs['vehicle_condition'] ?? specs['vehicleCondition'] ?? specs['condition']);
+    } else if (_category == 'other') {
+      addSpecRow('Type', specs['other_type'] ?? specs['otherType'] ?? specs['other_specifications']);
+      addSpecRow('Specifications', specs['other_specifications'] ?? specs['otherSpecifications'] ?? specs['specs']);
+    }
+    
+    if (specsList.isEmpty) {
+      specsList.add(
+        Text(
+          'No additional specifications available.',
+          style: TextStyle(
+            fontSize: 12,
+            fontStyle: FontStyle.italic,
+            color: isDark ? Colors.grey[500] : Colors.grey[500],
+          ),
+        ),
+      );
+    }
+    
+    return [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
+          ),
+        ),
+        child: Column(
+          children: specsList,
+        ),
+      )
+    ];
   }
 
   /// Compresses an image file to reduce upload size.
@@ -1502,44 +2282,29 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
-                            icon: const Icon(Icons.lightbulb_outline),
-                            label: Text(_showSuggestions ? 'Hide suggestions' : 'Find similar items'),
+                            icon: const Icon(Icons.lightbulb_outline, color: Color(0xFF00A3FF)),
+                            label: const Text(
+                              'Find similar items',
+                              style: TextStyle(
+                                color: Color(0xFF00A3FF),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                             onPressed: () {
-                              setState(() {
-                                _showSuggestions = !_showSuggestions;
-                                _lastSuggestionQuery = _descriptionController.text.trim();
-                              });
+                              final query = _descriptionController.text.trim();
+                              if (query.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please enter a description first to find similar items.'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                                return;
+                              }
+                              _showSuggestionsBottomSheet(context, query);
                             },
                           ),
                         ),
-                        if (_showSuggestions && _descriptionController.text.trim().length >= 2)
-                          Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: ItemSuggestionsWidget(
-                              initialQuery: _lastSuggestionQuery,
-                              category: _category,
-                              onConfirm: (item) {
-                                setState(() {
-                                  _descriptionController.text = (item['title'] ?? '').toString();
-                                  _showSuggestions = false;
-                                });
-                              },
-                              onEdit: (edited) {
-                                setState(() {
-                                  _descriptionController.text = (edited['title'] ?? '').toString();
-                                  _showSuggestions = false;
-                                });
-                              },
-                              onCreateNew: () {
-                                setState(() => _showSuggestions = false);
-                              },
-                            ),
-                          ),
                         const SizedBox(height: 16),
                         _buildModernTextField(
                           _estimatedValueController,

@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path('suggestions/', views.get_suggestions, name='catalog-suggestions'),
+    path('online-search/', views.online_search, name='catalog-online-search'),
     path('items/confirm/', views.confirm_item, name='catalog-confirm-item'),
     path('items/', views.ItemCatalogListView.as_view(), name='catalog-list'),
     path('depreciation/calculate/', views.calculate_depreciation, name='depreciation-calculate'),
