@@ -76,9 +76,7 @@ export default function Profile() {
     try {
       const fd = new FormData();
       fd.append('avatar', file);
-      const res = await axiosClient.post('/auth/profile/me/avatar/', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await axiosClient.post('/auth/profile/me/avatar/', fd);
       setProfile((prev) => ({
         ...prev,
         profile: { ...prev?.profile, profile_image_url: res.data.profile_image_url },
