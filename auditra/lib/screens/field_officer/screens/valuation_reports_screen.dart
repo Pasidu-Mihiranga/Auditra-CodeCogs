@@ -218,14 +218,14 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
           // Refresh button
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFEFF6FF),
               shape: BoxShape.circle,
             ),
             child: IconButton(
-              icon: const Icon(
+              icon: Icon(
                 Icons.refresh_rounded,
                 size: 20,
-                color: Color(0xFF3B82F6),
+                color: isDark ? Colors.white : const Color(0xFF3B82F6),
               ),
               onPressed: _refreshProject,
             ),

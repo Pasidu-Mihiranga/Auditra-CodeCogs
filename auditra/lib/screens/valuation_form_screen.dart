@@ -1710,6 +1710,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// also triggers automatic GPS location detection.
   Widget _buildModernCategoryChip(String value, String label, IconData icon) {
     final isSelected = _category == value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: () {
         setState(() => _category = value);
@@ -1722,10 +1723,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue[50] : Colors.grey[50],
+          color: isSelected 
+              ? (isDark ? const Color(0xFF00A3FF).withOpacity(0.2) : Colors.blue[50]) 
+              : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? Colors.blue[600]! : Colors.grey[300]!,
+            color: isSelected 
+                ? (isDark ? const Color(0xFF00A3FF) : Colors.blue[600]!) 
+                : (isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]!),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -1735,7 +1740,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             Icon(
               icon,
               size: 20,
-              color: isSelected ? Colors.blue[700] : Colors.grey[600],
+              color: isSelected 
+                  ? (isDark ? const Color(0xFF00A3FF) : Colors.blue[700]) 
+                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
             ),
             const SizedBox(width: 8),
             Flexible(
@@ -1744,7 +1751,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected ? Colors.blue[900] : Colors.grey[700],
+                  color: isSelected 
+                      ? (isDark ? Colors.white : Colors.blue[900]) 
+                      : (isDark ? Colors.grey[300] : Colors.grey[700]),
                 ),
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
@@ -1752,7 +1761,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             ),
             if (isSelected) ...[
               const SizedBox(width: 4),
-              Icon(Icons.check_circle, color: Colors.blue[700], size: 18),
+              Icon(Icons.check_circle, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 18),
             ],
           ],
         ),
@@ -1888,6 +1897,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// Allows choosing type and method, entering rate and years, and triggering
   /// [_calculateNewPrice] to compute a new estimated value.
   Widget _buildPriceCalculationSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1895,23 +1905,23 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue[50],
+            color: isDark ? Colors.white.withOpacity(0.06) : Colors.blue[50],
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.blue[200]!, width: 1),
+            border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.blue[200]!, width: 1),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(Icons.calculate, color: Colors.blue[700], size: 20),
+                  Icon(Icons.calculate, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 20),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Price Calculation',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                 ],
@@ -2018,6 +2028,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// Resets the method and clears previous input fields on selection.
   Widget _buildCalculationTypeButton(String value, String label, IconData icon, Color color) {
     final isSelected = _calculationType == value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: () {
         setState(() {
@@ -2034,10 +2045,10 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.2) : Colors.white,
+          color: isSelected ? color.withOpacity(isDark ? 0.25 : 0.2) : (isDark ? Colors.white.withOpacity(0.05) : Colors.white),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? color : Colors.grey[300]!,
+            color: isSelected ? color : (isDark ? Colors.white.withOpacity(0.15) : Colors.grey[300]!),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -2047,7 +2058,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             Icon(
               icon,
               size: 20,
-              color: isSelected ? color : Colors.grey[600],
+              color: isSelected ? color : (isDark ? Colors.grey[400] : Colors.grey[600]),
             ),
             const SizedBox(width: 8),
             Flexible(
@@ -2056,7 +2067,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected ? color : Colors.grey[700],
+                  color: isSelected ? color : (isDark ? Colors.grey[300] : Colors.grey[700]),
                 ),
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
@@ -2172,6 +2183,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   /// Builds the land-specific input fields: area, type, and auto-detected location.
   Widget _buildLandFields() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2202,9 +2214,21 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _landLocationController,
-                style: const TextStyle(fontSize: 16),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.white : const Color(0xFF1C1E21),
+                  fontWeight: FontWeight.w500,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Location Coordinates',
+                  labelStyle: TextStyle(
+                    color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                    fontWeight: FontWeight.normal,
+                  ),
+                  floatingLabelStyle: const TextStyle(
+                    color: Color(0xFF00A3FF),
+                    fontWeight: FontWeight.w600,
+                  ),
                   prefixIcon: _isLoading
                       ? const SizedBox(
                           width: 20,
@@ -2214,14 +2238,32 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         )
-                      : Icon(Icons.location_on, color: Colors.blue[700]),
+                      : Icon(Icons.location_on, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 22),
                   hintText: _isLoading ? 'Detecting location...' : 'Location will be detected automatically',
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.grey[600] : const Color(0xFF94A3B8),
+                  ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE2E8F0),
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF00A3FF),
+                      width: 2,
+                    ),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  fillColor: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                 ),
                 readOnly: true,
               ),
@@ -2235,6 +2277,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   /// Builds the building-specific input fields: area, type, location, floors, and year built.
   Widget _buildBuildingFields() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2265,9 +2308,21 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _buildingLocationController,
-                style: const TextStyle(fontSize: 16),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.white : const Color(0xFF1C1E21),
+                  fontWeight: FontWeight.w500,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Location Coordinates',
+                  labelStyle: TextStyle(
+                    color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                    fontWeight: FontWeight.normal,
+                  ),
+                  floatingLabelStyle: const TextStyle(
+                    color: Color(0xFF00A3FF),
+                    fontWeight: FontWeight.w600,
+                  ),
                   prefixIcon: _isLoading
                       ? const SizedBox(
                           width: 20,
@@ -2277,14 +2332,32 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         )
-                      : Icon(Icons.location_on, color: Colors.blue[700]),
+                      : Icon(Icons.location_on, color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700], size: 22),
                   hintText: _isLoading ? 'Detecting location...' : 'Location will be detected automatically',
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.grey[600] : const Color(0xFF94A3B8),
+                  ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE2E8F0),
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF00A3FF),
+                      width: 2,
+                    ),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  fillColor: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                 ),
                 readOnly: true,
               ),
@@ -2528,6 +2601,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   /// of new photos (with star-to-set-primary and delete actions), and thumbnails
   /// for already-uploaded server photos.
   Widget _buildPhotosSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2541,15 +2615,15 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.blue[300]!,
+                        color: isDark ? Colors.white.withOpacity(0.1) : Colors.blue[300]!,
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue.withOpacity(0.1),
+                          color: isDark ? Colors.black.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -2563,12 +2637,12 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.blue[50],
+                              color: isDark ? const Color(0xFF00A3FF).withOpacity(0.15) : Colors.blue[50],
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               Icons.photo_library_rounded,
-                              color: Colors.blue[700],
+                              color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700],
                               size: 32,
                             ),
                           ),
@@ -2588,15 +2662,15 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.blue[300]!,
+                        color: isDark ? Colors.white.withOpacity(0.1) : Colors.blue[300]!,
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue.withOpacity(0.1),
+                          color: isDark ? Colors.black.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -2610,12 +2684,12 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.blue[50],
+                              color: isDark ? const Color(0xFF00A3FF).withOpacity(0.15) : Colors.blue[50],
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               Icons.camera_alt_rounded,
-                              color: Colors.blue[700],
+                              color: isDark ? const Color(0xFF00A3FF) : Colors.blue[700],
                               size: 32,
                             ),
                           ),
