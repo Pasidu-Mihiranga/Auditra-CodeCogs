@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useMemo, useCallback } from 'react';
 import { ThemeProvider as MuiThemeProvider, CssBaseline, useMediaQuery } from '@mui/material';
+import { useLocation } from 'react-router-dom';
 import createAppTheme from '../theme';
 import axiosClient from '../api/axiosClient';
 
@@ -19,6 +20,7 @@ function resolveMode(preference) {
 }
 
 export default function ThemeProvider({ children }) {
+  const location = useLocation();
   const [preference, setPreference] = useState(() => {
     try {
       return localStorage.getItem('auditra-theme-mode') || 'system';
@@ -27,8 +29,9 @@ export default function ThemeProvider({ children }) {
     }
   });
 
+  const isLoginPage = location.pathname === '/login';
   const systemDark = useMediaQuery('(prefers-color-scheme: dark)');
-  const mode = preference === 'system' ? (systemDark ? 'dark' : 'light') : preference;
+  const mode = isLoginPage ? 'light' : (preference === 'system' ? (systemDark ? 'dark' : 'light') : preference);
 
   const toggleTheme = useCallback(() => {
     setPreference((prev) => {
