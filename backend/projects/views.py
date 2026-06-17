@@ -148,6 +148,30 @@ class CheckUserByEmailView(APIView):
         if user:
             existing_role = get_user_role(user)
             if existing_role == role_type:
+                # Fetch additional user details (phone, company, address)
+                phone, address, company = '', '', ''
+                
+                if hasattr(user, 'userprofile') and user.userprofile.phone:
+                    phone = user.userprofile.phone
+
+                if role_type == 'client':
+                    from authentication.models import ClientFormSubmission
+                    from projects.models import Project
+                    
+                    # Try to fetch from the latest form submission
+                    submission = ClientFormSubmission.objects.filter(email__iexact=email).order_by('-submitted_at').first()
+                    if submission:
+                        phone = phone or (submission.phone or '')
+                        address = submission.address or ''
+                        company = submission.company_name or ''
+                    else:
+                        # Try to fetch from previous projects
+                        latest_project = Project.objects.filter(client_info__email__iexact=email).order_by('-created_at').first()
+                        if latest_project and latest_project.client_info:
+                            phone = phone or latest_project.client_info.get('phone', '')
+                            address = latest_project.client_info.get('address', '')
+                            company = latest_project.client_info.get('company', '')
+
                 return Response({
                     'exists': True,
                     'user': {
@@ -156,6 +180,9 @@ class CheckUserByEmailView(APIView):
                         'full_name': f"{user.first_name} {user.last_name}".strip() or user.username,
                         'email': user.email,
                         'role': existing_role,
+                        'phone': phone,
+                        'address': address,
+                        'company': company,
                     },
                     'message': 'Account found',
                 })

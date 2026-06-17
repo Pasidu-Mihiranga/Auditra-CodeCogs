@@ -53,6 +53,7 @@ export default function CreateProject() {
   const [clientEmailMessage, setClientEmailMessage] = useState('');
   const [agentEmailStatus, setAgentEmailStatus] = useState(null);
   const [agentEmailMessage, setAgentEmailMessage] = useState('');
+  const [dbClient, setDbClient] = useState(null);
 
   // Use document management hook (projectId will be set after project creation)
   const {
@@ -68,6 +69,17 @@ export default function CreateProject() {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
     if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
+
+    // Live validation for client_name if we fetched a dbClient
+    if (name === 'client_name' && dbClient) {
+      if (value.trim().toLowerCase() !== dbClient.full_name.trim().toLowerCase()) {
+        setClientEmailStatus('error');
+        setClientEmailMessage(`Client name mismatch. Correct name is "${dbClient.full_name}".`);
+      } else {
+        setClientEmailStatus('found');
+        setClientEmailMessage(`Account found: ${dbClient.full_name} (${dbClient.email})`);
+      }
+    }
   };
 
   const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -110,6 +122,8 @@ export default function CreateProject() {
     // Client name & email required
     if (!form.client_name.trim()) {
       errors.client_name = 'Client name is required';
+    } else if (dbClient && form.client_name.trim().toLowerCase() !== dbClient.full_name.trim().toLowerCase()) {
+      errors.client_name = `Client name must match the registered account: "${dbClient.full_name}"`;
     }
     if (!form.client_email.trim()) {
       errors.client_email = 'Client email is required';
@@ -145,7 +159,7 @@ export default function CreateProject() {
     if (!email || !email.includes('@')) {
       setStatus(null);
       setMessage('');
-      return;
+      return null;
     }
 
     setStatus('checking');
@@ -156,6 +170,7 @@ export default function CreateProject() {
       if (data.exists && !data.role_mismatch) {
         setStatus('found');
         setMessage(`Account found: ${data.user.full_name} (${data.user.email})`);
+        return data.user;
       } else if (data.exists && data.role_mismatch) {
         setStatus('mismatch');
         setMessage(data.message);
@@ -167,10 +182,34 @@ export default function CreateProject() {
       setStatus('error');
       setMessage('Failed to check email');
     }
+    return null;
   }, []);
 
-  const handleClientEmailBlur = () => {
-    checkEmail(form.client_email, 'client', setClientEmailStatus, setClientEmailMessage);
+  const handleClientEmailBlur = async () => {
+    const user = await checkEmail(form.client_email, 'client', setClientEmailStatus, setClientEmailMessage);
+    if (user) {
+      setDbClient(user);
+      const currentName = form.client_name.trim();
+      const dbName = user.full_name.trim();
+      
+      if (currentName && currentName.toLowerCase() !== dbName.toLowerCase()) {
+        setClientEmailStatus('error');
+        setClientEmailMessage(`Client name mismatch. Correct name is "${dbName}".`);
+      } else {
+        // If empty or matches, auto-fill details
+        setForm(prev => ({
+          ...prev,
+          client_name: dbName,
+          client_phone: user.phone || prev.client_phone,
+          client_company: user.company || prev.client_company,
+          client_address: user.address || prev.client_address,
+        }));
+        setClientEmailStatus('found');
+        setClientEmailMessage(`Account found: ${dbName} (${user.email})`);
+      }
+    } else {
+      setDbClient(null);
+    }
   };
 
   const handleAgentEmailBlur = () => {
@@ -345,7 +384,11 @@ export default function CreateProject() {
                   value={form.client_email}
                   onChange={(e) => {
                     handleChange(e);
-                    if (clientEmailStatus) { setClientEmailStatus(null); setClientEmailMessage(''); }
+                    if (clientEmailStatus) { 
+                      setClientEmailStatus(null); 
+                      setClientEmailMessage(''); 
+                      setDbClient(null);
+                    }
                   }}
                   onBlur={handleClientEmailBlur}
                   required
