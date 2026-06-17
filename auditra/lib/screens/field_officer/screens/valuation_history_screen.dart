@@ -100,7 +100,7 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
           MaterialPageRoute(
             builder: (context) => ValuationReportsScreen(
               project: project,
-              targetValuationId: valuation.id,
+              targetValuationId: valuation.id.toString(),
             ),
           ),
         );

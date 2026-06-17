@@ -328,7 +328,7 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                         itemCount: valuations.length,
                         itemBuilder: (context, index) {
                           final valuation = valuations[index];
-                          final cardKey = _cardKeys.putIfAbsent(valuation.id, () => GlobalKey());
+                          final cardKey = _cardKeys.putIfAbsent(valuation.id.toString(), () => GlobalKey());
                           return KeyedSubtree(
                             key: cardKey,
                             child: _buildReportCard(valuation, project),

@@ -450,7 +450,8 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   /// Requests device GPS and fills the location field for the active category.
   /// Rounds coordinates to 6 decimal places to match the backend DecimalField precision.
-  /// Called automatically on screen load for land/building, and when category changes.  Future<void> _getCurrentLocation() async {
+  /// Called automatically on screen load for land/building, and when category changes.
+  Future<void> _getCurrentLocation() async {
     setState(() => _isLoading = true);
     try {
       final locData = await OfflineLocationService.getCurrentLocation();
