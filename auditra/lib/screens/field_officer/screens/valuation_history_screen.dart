@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:open_file/open_file.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../models/project_model.dart';
 import '../../../../models/valuation_model.dart';
 import '../../../../services/api_service.dart';
-import '../../../../services/pdf_service.dart';
 import '../../../../theme/app_colors.dart';
 import '../utils/field_officer_ui_helpers.dart';
+import 'valuation_reports_screen.dart';
 
 class ValuationHistoryScreen extends StatefulWidget {
   const ValuationHistoryScreen({super.key});
@@ -67,7 +66,7 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
     }
   }
 
-  Future<void> _generatePdfPreview(Valuation valuation) async {
+  Future<void> _navigateToReportsScreen(Valuation valuation) async {
     // Show loading indicator dialog
     showDialog(
       context: context,
@@ -82,7 +81,7 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(width: 16),
-                Text('Fetching project details...', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Loading project reports...', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -97,15 +96,18 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
 
       if (projectResult['success'] == true) {
         final project = Project.fromJson(projectResult['data']);
-        final file = await PdfService.generateValuationReport(
-          valuation: valuation,
-          project: project,
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ValuationReportsScreen(
+              project: project,
+              targetValuationId: valuation.id,
+            ),
+          ),
         );
-        await OpenFile.open(file.path);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(projectResult['message'] ?? 'Failed to load project details for PDF generation'),
+            content: Text(projectResult['message'] ?? 'Failed to load project details'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -114,7 +116,7 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
       if (mounted) {
         Navigator.of(context).pop(); // Ensure dialog is dismissed
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error generating PDF: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -366,7 +368,7 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          onTap: () => _showValuationDetailsSheet(valuation, isDark),
+          onTap: () => _navigateToReportsScreen(valuation),
           borderRadius: BorderRadius.circular(20),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -448,7 +450,7 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
                 const Divider(height: 1),
                 const SizedBox(height: 12),
 
-                // Estimated Value & Date Row + PDF action
+                // Estimated Value & Date Row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -476,43 +478,13 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
                         ),
                       ],
                     ),
-                    Row(
-                      children: [
-                        Text(
-                          DateFormat('MMM dd, yyyy').format(valuation.createdAt),
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? const Color(0xFF64748B) : const Color(0xFF9CA3AF),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (valuation.finalReportUrl != null || valuation.submittedReportUrl != null)
-                          IconButton(
-                            icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                            color: Colors.red[700],
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: () async {
-                              final url = valuation.finalReportUrl ?? valuation.submittedReportUrl!;
-                              try {
-                                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Could not open PDF: $e')),
-                                );
-                              }
-                            },
-                          )
-                        else
-                          IconButton(
-                            icon: const Icon(Icons.picture_as_pdf, size: 20),
-                            color: Colors.red[400],
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: () => _generatePdfPreview(valuation),
-                          ),
-                      ],
+                    Text(
+                      DateFormat('MMM dd, yyyy').format(valuation.createdAt),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFF64748B) : const Color(0xFF9CA3AF),
+                      ),
                     ),
                   ],
                 ),
@@ -537,222 +509,4 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
     }
   }
 
-  void _showValuationDetailsSheet(Valuation valuation, bool isDark) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-            ),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF475569) : const Color(0xFFE5E7EB),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Report Details',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white : const Color(0xFF111827),
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: FieldOfficerUiHelpers.getValuationStatusColor(valuation.status),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        valuation.statusDisplay.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _detailRow('Project', valuation.projectTitle, isDark),
-                _detailRow('Category', valuation.categoryDisplay, isDark),
-                _detailRow(
-                  'Estimated Value',
-                  valuation.estimatedValue != null
-                      ? 'LKR ${NumberFormat('#,##0.00').format(valuation.estimatedValue)}'
-                      : 'Pending',
-                  isDark,
-                  textColor: AppColors.accent,
-                ),
-                _detailRow('Date Created', DateFormat('MMM dd, yyyy HH:mm').format(valuation.createdAt), isDark),
-                if (valuation.description != null && valuation.description!.isNotEmpty)
-                  _detailRow('Description', valuation.description!, isDark),
-                if (valuation.notes != null && valuation.notes!.isNotEmpty)
-                  _detailRow('Notes', valuation.notes!, isDark),
-
-                // Category-specific details
-                if (valuation.category == 'land') ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: Divider(),
-                  ),
-                  Text('Land Specifications', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.black87)),
-                  const SizedBox(height: 8),
-                  if (valuation.landArea != null)
-                    _detailRow('Land Area (perches)', valuation.landArea.toString(), isDark),
-                  if (valuation.landType != null)
-                    _detailRow('Land Type', valuation.landType!, isDark),
-                  if (valuation.landLocation != null)
-                    _detailRow('Location Address', valuation.landLocation!, isDark),
-                  if (valuation.landLatitude != null && valuation.landLongitude != null)
-                    _detailRow('GPS Coordinates', '${valuation.landLatitude}, ${valuation.landLongitude}', isDark),
-                ],
-
-                if (valuation.category == 'building') ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: Divider(),
-                  ),
-                  Text('Building Specifications', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.black87)),
-                  const SizedBox(height: 8),
-                  if (valuation.buildingArea != null)
-                    _detailRow('Building Area (sq. ft.)', valuation.buildingArea.toString(), isDark),
-                  if (valuation.buildingType != null)
-                    _detailRow('Building Type', valuation.buildingType!, isDark),
-                  if (valuation.buildingLocation != null)
-                    _detailRow('Location Address', valuation.buildingLocation!, isDark),
-                  if (valuation.buildingLatitude != null && valuation.buildingLongitude != null)
-                    _detailRow('GPS Coordinates', '${valuation.buildingLatitude}, ${valuation.buildingLongitude}', isDark),
-                  if (valuation.numberOfFloors != null)
-                    _detailRow('Number of Floors', valuation.numberOfFloors.toString(), isDark),
-                  if (valuation.yearBuilt != null)
-                    _detailRow('Year Built', valuation.yearBuilt.toString(), isDark),
-                ],
-
-                if (valuation.category == 'vehicle') ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: Divider(),
-                  ),
-                  Text('Vehicle Specifications', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.black87)),
-                  const SizedBox(height: 8),
-                  if (valuation.vehicleMake != null)
-                    _detailRow('Make', valuation.vehicleMake!, isDark),
-                  if (valuation.vehicleModel != null)
-                    _detailRow('Model', valuation.vehicleModel!, isDark),
-                  if (valuation.vehicleYear != null)
-                    _detailRow('Year of Manufacture', valuation.vehicleYear.toString(), isDark),
-                  if (valuation.vehicleRegistrationNumber != null)
-                    _detailRow('Registration No.', valuation.vehicleRegistrationNumber!, isDark),
-                  if (valuation.vehicleMileage != null)
-                    _detailRow('Mileage (km)', valuation.vehicleMileage.toString(), isDark),
-                  if (valuation.vehicleCondition != null)
-                    _detailRow('Overall Condition', valuation.vehicleCondition!, isDark),
-                ],
-
-                if (valuation.rejectionReason != null && valuation.rejectionReason!.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: Divider(),
-                  ),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Rejection Reason',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 13),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          valuation.rejectionReason!,
-                          style: TextStyle(color: isDark ? Colors.white.withOpacity(0.9) : Colors.red[900], fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text('Close', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _detailRow(String label, String value, bool isDark, {Color? textColor}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: isDark ? const Color(0xFF64748B) : const Color(0xFF9CA3AF),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: textColor ?? (isDark ? Colors.white : const Color(0xFF111827)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

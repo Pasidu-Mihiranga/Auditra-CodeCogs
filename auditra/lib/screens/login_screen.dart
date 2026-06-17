@@ -355,7 +355,7 @@ class _LoginScreenState extends State<LoginScreen>
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             SizedBox(
-                              height: fixedHeight * 0.18,
+                              height: fixedHeight * 0.08,
                             ), // Push form higher into the wave
                             // Staggered Title Header
                             FadeTransition(
