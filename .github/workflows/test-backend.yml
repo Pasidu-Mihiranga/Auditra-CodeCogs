@@ -58,4 +58,5 @@ jobs:
           SECRET_KEY: test_secret_key_123
         # Exclude the E2E workflow tests to only run fast unit tests
         run: |
+          touch .env
           python manage.py test --exclude-tag=e2e
