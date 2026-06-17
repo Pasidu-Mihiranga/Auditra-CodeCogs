@@ -74,7 +74,7 @@ class PushService {
     final accessToken = prefs.getString('access_token');
     if (accessToken == null) return;
 
-    const defaultApiBase = kIsWeb ? 'http://localhost:8000/api' : 'http://10.0.2.2:8000/api';
+    const defaultApiBase = 'https://auditra.pasidumihiranga.me/api';
     const baseUrl = String.fromEnvironment('API_BASE', defaultValue: defaultApiBase);
     await http.post(
       Uri.parse('$baseUrl/notifications/device-tokens/'),
