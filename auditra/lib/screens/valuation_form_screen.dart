@@ -12,6 +12,7 @@ import '../services/network_service.dart';
 import '../services/offline_db_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/pdf_service.dart';
+import '../services/offline_location_service.dart';
 import '../models/project_model.dart';
 import '../models/valuation_model.dart';
 import '../widgets/item_suggestions_widget.dart';
@@ -449,50 +450,17 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
   /// Requests device GPS and fills the location field for the active category.
   /// Rounds coordinates to 6 decimal places to match the backend DecimalField precision.
-  /// Called automatically on screen load for land/building, and when category changes.
-  Future<void> _getCurrentLocation() async {
+  /// Called automatically on screen load for land/building, and when category changes.  Future<void> _getCurrentLocation() async {
+    setState(() => _isLoading = true);
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location services are disabled.')),
-          );
-        }
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Location permissions are denied.')),
-            );
-          }
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permissions are permanently denied.')),
-          );
-        }
-        return;
-      }
-
-      setState(() => _isLoading = true);
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      final locData = await OfflineLocationService.getCurrentLocation();
+      final double lat = locData['latitude'] as double;
+      final double lng = locData['longitude'] as double;
+      final bool isDefault = locData['isDefault'] as bool;
 
       // Round to 6 decimal places to match backend DecimalField(max_digits=9, decimal_places=6)
-      final roundedLat = double.parse(position.latitude.toStringAsFixed(6));
-      final roundedLng = double.parse(position.longitude.toStringAsFixed(6));
+      final roundedLat = double.parse(lat.toStringAsFixed(6));
+      final roundedLng = double.parse(lng.toStringAsFixed(6));
       
       final locationText = '$roundedLat, $roundedLng';
 
@@ -514,8 +482,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         setState(() {});
       }
 
-      // Location captured silently - no snackbar needed for automatic detection
-      // The location field will be updated automatically
+      if (isDefault && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Using default fallback location. Check GPS / permissions.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
