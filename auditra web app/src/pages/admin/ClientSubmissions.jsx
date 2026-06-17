@@ -385,6 +385,7 @@ export default function ClientSubmissions() {
         expandedId={expandedId}
         onToggleExpand={handleToggleExpand}
         rowClickable
+        containerSx={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
         renderClientCell={(_, fullName) => (
           <Typography variant="body2" sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {fullName}

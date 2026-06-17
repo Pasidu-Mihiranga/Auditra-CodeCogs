@@ -501,10 +501,10 @@ export default function EmployeeSubmissions() {
                         sx={{ py: 0, px: 0, borderBottom: isExpanded ? undefined : 'none' }}
                       >
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                          <Box sx={{ p: 3, bgcolor: 'grey.50' }}>
+                          <Box sx={{ p: 3, bgcolor: (t) => t.palette.custom?.cardInner || 'grey.50' }}>
                             <Typography
                               variant="subtitle1"
-                              sx={{ fontWeight: 700, mb: 2, color: '#1976d2' }}
+                              sx={{ fontWeight: 700, mb: 2, color: 'primary.main' }}
                             >
                               Application Details
                             </Typography>
