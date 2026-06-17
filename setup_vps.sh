@@ -65,12 +65,18 @@ cat <<EOT | sudo tee /etc/nginx/sites-available/auditra > /dev/null
 server {
     listen 80;
     server_name auditra.pasidumihiranga.me;
+    client_max_body_size 10M;
 
     # Serve React Frontend
     location / {
         root "/var/www/auditra/auditra web app/dist";
         index index.html;
         try_files \$uri \$uri/ /index.html;
+    }
+
+    # Serve Media Files (Profile Avatars, etc.)
+    location /media/ {
+        alias /var/www/auditra/backend/media/;
     }
 
     # Proxy API Requests to Daphne (Django ASGI)

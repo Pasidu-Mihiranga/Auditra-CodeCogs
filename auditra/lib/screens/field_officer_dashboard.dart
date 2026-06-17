@@ -924,7 +924,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOutCubic,
-        margin: const EdgeInsets.only(bottom: 24),
+        margin: EdgeInsets.only(bottom: 24 + MediaQuery.of(context).padding.bottom),
         width: targetWidth,
         height: _isNavBarCollapsed ? 54.0 : 68.0,
         decoration: BoxDecoration(

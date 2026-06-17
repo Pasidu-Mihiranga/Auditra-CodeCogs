@@ -445,38 +445,181 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     return Scaffold(
       backgroundColor: bottomBgColor,
-      body: Stack(
-        children: [
-          // Background Slideshow clipped in a wave (Same as Login)
-          ClipPath(
-            clipper: TopWaveClipper(),
-            child: Container(
-              height: size.height * 0.52,
-              width: double.infinity,
-              color: AppColors.accent,
-              child: const Stack(
+      resizeToAvoidBottomInset: false,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final fixedHeight = constraints.maxHeight < 700 ? 700.0 : constraints.maxHeight;
+
+          return SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: SizedBox(
+              height: fixedHeight,
+              child: Stack(
                 children: [
-                  Positioned.fill(
-                    child: HeroSlideshow(
-                      images: [
-                        'assets/hero1.webp',
-                        'assets/hero2.webp',
-                        'assets/hero3.webp',
-                      ],
+                  // Background Slideshow clipped in a wave (Same as Login)
+                  Positioned(
+                    top: 0, left: 0, right: 0,
+                    height: fixedHeight * 0.52,
+                    child: ClipPath(
+                      clipper: TopWaveClipper(),
+                      child: Container(
+                        width: double.infinity,
+                        color: AppColors.accent,
+                        child: const Stack(
+                          children: [
+                            Positioned.fill(
+                              child: HeroSlideshow(
+                                images: [
+                                  'assets/hero1.webp',
+                                  'assets/hero2.webp',
+                                  'assets/hero3.webp',
+                                ],
+                              ),
+                            ),
+                            Positioned.fill(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.black54,
+                                      Colors.black26,
+                                      Colors.transparent,
+                                    ],
+                                    stops: [0.0, 0.4, 1.0],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  Positioned.fill(
-                    child: DecoratedBox(
+                  
+                  // Soft white gradient glow in the top right corner
+                  Positioned(
+                    top: 0, left: 0, right: 0,
+                    height: fixedHeight * 0.52,
+                    child: Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
+                        gradient: RadialGradient(
+                          center: Alignment.topRight,
+                          radius: 0.8,
                           colors: [
-                            Colors.black54,
-                            Colors.black26,
+                            Colors.white.withOpacity(0.9),
+                            Colors.white.withOpacity(0.3),
                             Colors.transparent,
                           ],
-                          stops: [0.0, 0.4, 1.0],
+                          stops: const [0.0, 0.4, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  // Small Logo in top-right corner
+                  Positioned(
+                    top: notchPadding + 16,
+                    right: 20,
+                    child: Hero(
+                      tag: 'app_logo',
+                      child: Image.asset(
+                        'assets/Company Logo White.png',
+                        width: 75,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => const Icon(
+                          Icons.shield_outlined,
+                          size: 36,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Noticeable Premium Frosted Glass Back Button in top-left
+                  Positioned(
+                    top: notchPadding + 16,
+                    left: 16,
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_currentStep > 1) {
+                          setState(() => _currentStep--);
+                        } else {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Back',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Main Form Section (Pushed to bottom half, similar to Login)
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(height: fixedHeight * 0.18), // Push form higher into the wave
+                            
+                            // Animated Step Content
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 400),
+                              transitionBuilder: (Widget child, Animation<double> animation) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0.08, 0.0),
+                                      end: Offset.zero,
+                                    ).animate(CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeOutCubic,
+                                    )),
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              child: _currentStep == 1
+                                  ? _buildEmailStep(isDark)
+                                  : _currentStep == 2
+                                      ? _buildOtpStep(isDark)
+                                      : _buildPasswordStep(isDark),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -484,136 +627,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ],
               ),
             ),
-          ),
-          
-          // Soft white gradient glow in the top right corner
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topRight,
-                  radius: 0.8,
-                  colors: [
-                    Colors.white.withOpacity(0.9),
-                    Colors.white.withOpacity(0.3),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.4, 1.0],
-                ),
-              ),
-            ),
-          ),
-          
-          // Small Logo in top-right corner
-          Positioned(
-            top: notchPadding + 16,
-            right: 20,
-            child: Hero(
-              tag: 'app_logo',
-              child: Image.asset(
-                'assets/Company Logo White.png',
-                width: 75,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.shield_outlined,
-                  size: 36,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-
-          // Noticeable Premium Frosted Glass Back Button in top-left
-          Positioned(
-            top: notchPadding + 16,
-            left: 16,
-            child: GestureDetector(
-              onTap: () {
-                if (_currentStep > 1) {
-                  setState(() => _currentStep--);
-                } else {
-                  Navigator.of(context).pop();
-                }
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(30),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Back',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Main Form Section (Pushed to bottom half, similar to Login)
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(height: size.height * 0.18), // Push form higher into the wave
-                      
-                      // Animated Step Content
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 400),
-                        transitionBuilder: (Widget child, Animation<double> animation) {
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0.08, 0.0),
-                                end: Offset.zero,
-                              ).animate(CurvedAnimation(
-                                parent: animation,
-                                curve: Curves.easeOutCubic,
-                              )),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: _currentStep == 1
-                            ? _buildEmailStep(isDark)
-                            : _currentStep == 2
-                                ? _buildOtpStep(isDark)
-                                : _buildPasswordStep(isDark),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

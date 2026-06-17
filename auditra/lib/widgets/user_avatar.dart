@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 /// Shared avatar widget (Feature #16) that prefers the user's uploaded
 /// profile image but falls back to initials on a coloured circle.
@@ -40,10 +41,15 @@ class UserAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = backgroundColor ?? AppColors.primary;
     if (imageUrl != null && imageUrl!.isNotEmpty) {
+      String finalUrl = imageUrl!;
+      if (finalUrl.startsWith('http://') && 
+          ApiService.baseUrl.startsWith('https://')) {
+        finalUrl = finalUrl.replaceFirst('http://', 'https://');
+      }
       return CircleAvatar(
         radius: radius,
         backgroundColor: bg,
-        backgroundImage: NetworkImage(imageUrl!),
+        backgroundImage: NetworkImage(finalUrl),
         onBackgroundImageError: (_, __) {},
         child: _initials.isEmpty
             ? null
