@@ -1,4 +1,5 @@
 import { Avatar, Tooltip } from '@mui/material';
+import { getMediaUrl } from '../utils/mediaUtils';
 
 /**
  * Unified user avatar — uses profile_image_url if present, falls back to initials.
@@ -21,7 +22,7 @@ export default function UserAvatar({ user, size = 36, showTooltip = false, sx = 
     .join('')
     .toUpperCase();
 
-  const imageUrl = user.profile_image_url || null;
+  const imageUrl = getMediaUrl(user.profile_image_url || null);
 
   const avatar = (
     <Avatar
