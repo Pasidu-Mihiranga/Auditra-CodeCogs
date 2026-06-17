@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import axiosClient from '../api/axiosClient';
 import realtimeSocket from '../services/realtimeSocket';
 import { resolveRoleKey } from '../utils/roleConfig';
+import { useThemeMode } from './ThemeContext';
 
 const AuthContext = createContext(null);
 
@@ -15,6 +16,7 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(null);
   const [passwordChanged, setPasswordChanged] = useState(true);
   const [loading, setLoading] = useState(true);
+  const { applyServerTheme } = useThemeMode();
 
   const fetchUserData = useCallback(async () => {
     try {
@@ -31,11 +33,14 @@ export function AuthProvider({ children }) {
 
       const pwChanged = roleRes.data.password_changed ?? true;
 
-      // Also try fetching avatar from profile/me
+      // Also try fetching avatar and theme preference from profile/me
       let profileImageUrl = null;
+      let themePreference = 'system';
       try {
         const meRes = await axiosClient.get('/auth/profile/me/');
         profileImageUrl = meRes.data?.profile?.profile_image_url || null;
+        themePreference = meRes.data?.profile?.theme_preference || 'system';
+        applyServerTheme(themePreference);
       } catch {}
 
       const userData = { ...profileRes.data, profile_image_url: profileImageUrl };
@@ -58,7 +63,7 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyServerTheme]);
 
   useEffect(() => {
     fetchUserData();
