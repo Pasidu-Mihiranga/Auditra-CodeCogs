@@ -47,6 +47,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   AttendanceSummary? _summary;      // Attendance stats for the selected period
   bool _isLoadingSummary = false;
   bool _isMarkingAttendance = false; // True while the check-in API call is in progress
+  bool _canCheckIn = false;          // True if current time is within check-in window (6 AM - 8 AM)
   String? _username;                 // Logged-in user's username
   String? _roleDisplay;              // Human-readable role (e.g. "Field Officer")
 
@@ -194,7 +195,14 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         if (result['success']) {
           final data = result['data'];
           _isWorkingDay = data['is_working_day'] ?? true;
-          if (data['data'] != null) {
+          
+          if (data['data'] != null && data['data']['flags'] != null) {
+            _canCheckIn = data['data']['flags']['can_check_in'] ?? false;
+          } else {
+            _canCheckIn = false;
+          }
+
+          if (data['success'] == true && data['data'] != null) {
             _todayAttendance = Attendance.fromJson(data['data']);
           } else {
             _todayAttendance = null;
@@ -1616,7 +1624,14 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             ),
             const SizedBox(height: 16),
             
-            if (!_isWorkingDay)
+            if (_isLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (!_isWorkingDay)
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -1641,7 +1656,40 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   ],
                 ),
               )
-            else if (_todayAttendance == null || !_todayAttendance!.isCheckedIn)
+            else if (_todayAttendance == null && !_canCheckIn)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFDBEAFE)),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.lock_clock_rounded, color: AppColors.accent, size: 36),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Attendance Check-in is Locked',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF1E40AF),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Check-in is only available between 6:00 AM and 8:00 AM.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: isDark ? Colors.grey[400] : const Color(0xFF1E40AF).withOpacity(0.8),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if ((_todayAttendance == null || !_todayAttendance!.isCheckedIn) && _todayAttendance?.status != 'absent' && _canCheckIn)
               Column(
                 children: [
                   Row(
