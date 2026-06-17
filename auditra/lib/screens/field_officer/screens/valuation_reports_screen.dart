@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:intl/intl.dart';
 import '../../../../models/project_model.dart';
 import '../../../../models/valuation_model.dart';
@@ -47,6 +48,11 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
       context: context,
       setState: setState,
     );
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   /// Fetches the latest project data from the API and updates the UI
@@ -143,12 +149,96 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
     }
   }
 
+  Widget _buildHeader(BuildContext context, Project project) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 16,
+        bottom: 16,
+        left: 20,
+        right: 20,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0B1220) : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF3F4F6),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Back button
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFF3F4F6),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 18,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Title and Subtitle
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Valuation Reports',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  project.title,
+                  style: const TextStyle(
+                    color: Color(0xFF3B82F6),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          // Refresh button
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: const Icon(
+                Icons.refresh_rounded,
+                size: 20,
+                color: Color(0xFF3B82F6),
+              ),
+              onPressed: _refreshProject,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Builds the entire screen layout
   ///
-  /// The screen has a collapsible blue app bar showing the project name,
-  /// a scrollable body with the list of valuation report cards,
-  /// and a floating "+New Report" button (only visible when the project
-  /// status is "in_progress")
+  /// The screen uses a custom static header and a scrollable list
+  /// of valuation report cards.
   ///
   /// Shows a loading spinner while data is being fetched,
   /// and an empty-state message if no reports exist yet
@@ -160,144 +250,111 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) {
-          return [
-            // Collapsible app bar with gradient background and project title
-            SliverAppBar(
-              expandedHeight: 140.0,
-              floating: false,
-              pinned: true,
-              backgroundColor: const Color(0xFF0D47A1),
-              elevation: 0,
-              flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.only(left: 56, bottom: 16),
-                title: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    const Text(
-                      'Valuation Reports',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        shadows: [Shadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
-                      ),
-                    ),
-                    // Show the project name as a subtitle
-                    Text(
-                      project.title,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 11,
-                        fontWeight: FontWeight.normal,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-                background: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      // Decorative background icon
-                      Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Icon(
-                          Icons.assignment_rounded,
-                          color: Colors.white.withOpacity(0.1),
-                          size: 150,
+      backgroundColor: isDark ? const Color(0xFF0B1220) : const Color(0xFFF9FAFB),
+      body: Column(
+        children: [
+          // Static Header
+          _buildHeader(context, project),
+          
+          // Main scrollable content
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : valuations.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF0F9FF),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.assignment_outlined,
+                                size: 48,
+                                color: isDark ? Colors.grey[400] : const Color(0xFF3B82F6),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'No reports yet',
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: isDark ? Colors.white : const Color(0xFF1F2937),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tap the + button to create one',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
                         ),
+                      )
+                    // List of valuation report cards
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(
+                          top: 16,
+                          left: 16,
+                          right: 16,
+                          bottom: 100, // Space for FAB
+                        ),
+                        itemCount: valuations.length,
+                        itemBuilder: (context, index) {
+                          final valuation = valuations[index];
+                          return _buildReportCard(valuation, project);
+                        },
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              actions: [
-                // Manual refresh button to reload the project's valuation list
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                  onPressed: _refreshProject,
-                  tooltip: 'Refresh',
-                ),
-              ],
-            ),
-          ];
-        },
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : valuations.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.assignment_outlined,
-                            size: 64, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No valuation reports yet',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: isDark ? Colors.grey[300] : Colors.grey[600],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Tap the + button to create one',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDark ? Colors.grey[400] : Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                // List of valuation report cards
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 80),
-                    itemCount: valuations.length,
-                    itemBuilder: (context, index) {
-                      final valuation = valuations[index];
-                      return _buildReportCard(valuation, project);
-                    },
-                  ),
+          ),
+        ],
       ),
       // FloatingActionButton only shown when the project is actively in progress
       // (a completed or pending project should not allow new reports)
       floatingActionButton: project.status == 'in_progress'
-          ? FloatingActionButton.extended(
-              onPressed: () async {
-                // Navigate to the valuation form to create a new report
-                final result = await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ValuationFormScreen(project: project),
+          ? Container(
+              margin: const EdgeInsets.only(bottom: 16, right: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF3B82F6).withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
-                );
-                // Refresh the list if a new report was successfully created
-                // (the form screen returns `true` on success)
-                if (result == true) {
-                  _refreshProject();
-                }
-              },
-              backgroundColor: const Color(0xFF0D47A1),
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('New Report', style: TextStyle(color: Colors.white)),
+                ],
+              ),
+              child: FloatingActionButton.extended(
+                onPressed: () async {
+                  // Navigate to the valuation form to create a new report
+                  final result = await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ValuationFormScreen(project: project),
+                    ),
+                  );
+                  // Refresh the list if a new report was successfully created
+                  if (result == true) {
+                    _refreshProject();
+                  }
+                },
+                backgroundColor: const Color(0xFF4CA0FF),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                icon: const Icon(Icons.add, color: Colors.white, size: 20),
+                label: const Text(
+                  'New Report', 
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  )
+                ),
+              ),
             )
           : null,
     );
@@ -318,108 +375,127 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
   ///        - Delete icon - asks for confirmation then deletes (deletable reports only).
   Widget _buildReportCard(Valuation valuation, Project project) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // statusColor drives the header tint, icon colour, and badge background
-    final statusColor =
-        FieldOfficerUiHelpers.getValuationStatusColor(valuation.status);
-    // Convenience flags used to show/hide the edit, submit, and delete buttons
+    final statusColor = FieldOfficerUiHelpers.getValuationStatusColor(valuation.status);
     final isDraft = valuation.status == 'draft';
     final isRejected = valuation.status == 'rejected';
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
+        color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isRejected 
+              ? Colors.red.shade300 
+              : (isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE6EEF8)),
+          width: isRejected ? 2 : 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.26 : 0.05),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(isDark ? 0.15 : 0.04),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
-        // Highlight rejected reports with a red border
-        border: isRejected ? Border.all(color: Colors.red.shade200) : null,
       ),
       child: Column(
         children: [
           // Card header: shows category icon, name, and status badge
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.05),
+              color: statusColor.withOpacity(isDark ? 0.15 : 0.08),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
               ),
               border: Border(
-                bottom: BorderSide(color: statusColor.withOpacity(0.1)),
+                bottom: BorderSide(
+                  color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE2E8F0),
+                  width: 1,
+                ),
               ),
             ),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF0B1220) : Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: statusColor.withOpacity(0.3)),
+                    color: statusColor.withOpacity(isDark ? 0.2 : 0.15),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     _getCategoryIcon(valuation.category),
-                    size: 16,
+                    size: 20,
                     color: statusColor,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     valuation.categoryDisplay,
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: isDark ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: isDark ? Colors.white : const Color(0xFF1C1E21),
                     ),
                   ),
                 ),
-                // Status badge pill (e.g., DRAFT, SUBMITTED, APPROVED, REJECTED)
+                // Status badge pill
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: statusColor,
                     borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: statusColor.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Text(
                     valuation.statusDisplay.toUpperCase(),
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5),
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           
-          // Rejection reason banner — only shown for rejected reports with a reason
+          // Rejection reason banner
           if (isRejected && valuation.rejectionReason != null && valuation.rejectionReason!.isNotEmpty)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              color: Colors.red.shade50,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(isDark ? 0.2 : 0.1),
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.red.withOpacity(isDark ? 0.3 : 0.2),
+                    width: 1,
+                  ),
+                ),
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.red.shade700),
-                  const SizedBox(width: 8),
+                  Icon(Icons.info_outline, size: 18, color: Colors.red.shade400),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       'Reason: ${valuation.rejectionReason}',
                       style: TextStyle(
-                        color: Colors.red.shade900,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.red.shade300 : Colors.red.shade800,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -428,7 +504,7 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
             ),
 
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -442,17 +518,18 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                           Text(
                             'Estimated Value',
                             style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              fontSize: 13,
+                              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             'LKR ${NumberFormat('#,##0.00').format(valuation.estimatedValue ?? 0)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: AppColors.primary,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                              color: isDark ? Colors.white : const Color(0xFF1C1E21),
                             ),
                           ),
                         ],
@@ -465,18 +542,18 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                           Text(
                             'Date',
                             style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              fontSize: 13,
+                              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
-                            DateFormat('MMM dd, yyyy')
-                                .format(valuation.createdAt),
+                            DateFormat('MMM dd, yyyy').format(valuation.createdAt),
                             style: TextStyle(
-                              fontWeight: FontWeight.w500,
-                              fontSize: 14,
-                              color: isDark ? Colors.grey[200] : Colors.black87,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                              color: isDark ? Colors.grey[300] : const Color(0xFF334155),
                             ),
                           ),
                         ],
@@ -485,35 +562,34 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                   ],
                 ),
                 // Optional description preview (truncated to 2 lines)
-                if (valuation.description != null &&
-                    valuation.description!.isNotEmpty) ...[
-                  const SizedBox(height: 12),
+                if (valuation.description != null && valuation.description!.isNotEmpty) ...[
+                  const SizedBox(height: 16),
                   Text(
                     valuation.description!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isDark ? Colors.grey[300] : Colors.grey[700],
-                      fontSize: 13,
+                      color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                      fontSize: 14,
+                      height: 1.4,
                     ),
                   ),
                 ],
+                const SizedBox(height: 20),
+                Divider(
+                  height: 1,
+                  color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFE2E8F0),
+                ),
                 const SizedBox(height: 16),
-                const Divider(height: 1),
-                const SizedBox(height: 12),
-                // Action buttons row — visibility depends on valuation status
+                // Action buttons row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // PDF button logic:
-                    // - If a server-side PDF already exists (final or submitted), open it
-                    //   in the device's external PDF viewer via a URL.
-                    // - Otherwise, generate a local PDF preview on the fly and open it.
-                    // Priority: final report (senior valuer signed) > submitted (field officer) > local preview.
+                    // PDF Button
                     if (valuation.finalReportUrl != null || valuation.submittedReportUrl != null)
-                      IconButton(
-                        icon: const Icon(Icons.picture_as_pdf_outlined),
-                        color: Colors.red[700],
+                      _buildActionButton(
+                        icon: Icons.picture_as_pdf_rounded,
+                        color: Colors.red,
                         tooltip: 'View PDF Report',
                         onPressed: () async {
                           final url = valuation.finalReportUrl ?? valuation.submittedReportUrl!;
@@ -529,15 +605,11 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                         },
                       )
                     else 
-                      // No server PDF yet — generate a local preview so the field officer
-                      // can review the report before submitting it.
-                      // Generate Review PDF for any status
-                      IconButton(
-                        icon: const Icon(Icons.picture_as_pdf),
-                        color: Colors.red[700],
+                      _buildActionButton(
+                        icon: Icons.picture_as_pdf_rounded,
+                        color: Colors.red,
                         tooltip: 'Generate PDF Preview',
                         onPressed: () async {
-                          // Generate PDF preview
                           try {
                             final file = await PdfService.generateValuationReport(
                               valuation: valuation,
@@ -545,19 +617,22 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                             );
                             await OpenFile.open(file.path);
                           } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Error generating PDF: $e')),
-                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error generating PDF: $e')),
+                              );
+                            }
                           }
                         },
                       ),
+                    
+                    const SizedBox(width: 12),
 
-                    // Edit button — only shown when the valuation is in an editable state
-                    // (editable = draft or rejected; submitted/approved cannot be edited)
-                    if (FieldOfficerUiHelpers.canEditValuation(valuation))
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        color: Colors.blue[700],
+                    // Edit button
+                    if (FieldOfficerUiHelpers.canEditValuation(valuation)) ...[
+                      _buildActionButton(
+                        icon: Icons.edit_rounded,
+                        color: const Color(0xFF00A3FF),
                         tooltip: 'Edit Report',
                         onPressed: () async {
                           final result = await Navigator.of(context).push(
@@ -573,17 +648,16 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                           }
                         },
                       ),
+                      const SizedBox(width: 12),
+                    ],
                       
-                    // Submit button — shown for draft and rejected reports.
-                    // Opens the valuation form so the user can review the details
-                    // and tap "Submit" inside the form to send it to the accessor.
-                    if (isDraft || isRejected)
-                       IconButton(
-                        icon: const Icon(Icons.send_rounded),
-                        color: Colors.green[700],
+                    // Submit button
+                    if (isDraft || isRejected) ...[
+                       _buildActionButton(
+                        icon: Icons.send_rounded,
+                        color: const Color(0xFF10B981),
                         tooltip: 'Submit Report',
                         onPressed: () async {
-                           // Open the form so the user can review and submit
                            final result = await Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => ValuationFormScreen(
@@ -597,13 +671,14 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                           }
                         },
                       ),
+                      const SizedBox(width: 12),
+                    ],
 
-                    // Delete button — only shown when the valuation can be deleted.
-                    // Deletable = draft or rejected (cannot delete submitted/approved reports).
+                    // Delete button
                     if (FieldOfficerUiHelpers.canDeleteValuation(valuation))
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        color: Colors.grey[600],
+                      _buildActionButton(
+                        icon: Icons.delete_outline_rounded,
+                        color: const Color(0xFFEF4444),
                         tooltip: 'Delete Report',
                         onPressed: () => _deleteValuation(valuation),
                       ),
@@ -613,6 +688,34 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: color.withOpacity(isDark ? 0.2 : 0.1),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              icon,
+              size: 20,
+              color: color,
+            ),
+          ),
+        ),
       ),
     );
   }
