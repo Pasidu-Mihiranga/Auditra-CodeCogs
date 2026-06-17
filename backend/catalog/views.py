@@ -390,14 +390,23 @@ def online_search(request):
     if not query or not category:
         return Response({'error': 'query and category are required'}, status=400)
     
+    # Ensure query targets Sri Lanka context
+    sri_lanka_keywords = ['sri lanka', 'lkr', 'ikman', 'riyasewana', 'patpat', 'lk']
+    search_query = query
+    if not any(k in query.lower() for k in sri_lanka_keywords):
+        search_query = f"{query} Sri Lanka"
+        
     # 1. Try DuckDuckGo scraping
-    results = scrape_ddg_results(query)
+    results = scrape_ddg_results(search_query)
     
-    # 2. Parse results
+    # 2. Parse results and filter to ensure they belong to Sri Lanka
     suggestions = []
+    sri_lanka_indicators = ['sri lanka', 'lkr', 'rs', 'lakh', 'million', 'mn', 'colombo', 'kandy', 'galle', 'negombo', 'gampaha', '.lk', 'ikman', 'riyasewana', 'patpat']
     for r in results:
         try:
-            suggestions.append(parse_specs_for_result(query, r, category))
+            text_to_check = (r['title'] + " " + r['snippet'] + " " + r['source']).lower()
+            if any(indicator in text_to_check for indicator in sri_lanka_indicators):
+                suggestions.append(parse_specs_for_result(query, r, category))
         except Exception:
             pass
             

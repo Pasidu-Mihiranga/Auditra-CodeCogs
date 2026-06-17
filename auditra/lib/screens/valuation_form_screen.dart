@@ -344,7 +344,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     super.dispose();
   }
 
-  void _autofillValuationForm(Map<String, dynamic> data) {
+  void _autofillValuationForm(Map<String, dynamic> data, {bool isOnline = false}) {
     setState(() {
       final title = data['title'] ?? data['description'] ?? '';
       if (title.toString().isNotEmpty) {
@@ -370,17 +370,19 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         final landType = specs['land_type'] ?? specs['landType'];
         if (landType != null) _landTypeController.text = landType.toString();
 
-        final landLocation = specs['land_location'] ?? specs['landLocation'];
-        if (landLocation != null) _landLocationController.text = landLocation.toString();
+        if (!isOnline) {
+          final landLocation = specs['land_location'] ?? specs['landLocation'];
+          if (landLocation != null) _landLocationController.text = landLocation.toString();
 
-        final lat = specs['land_latitude'] ?? specs['landLatitude'];
-        if (lat != null) _landLatitude = double.tryParse(lat.toString());
+          final lat = specs['land_latitude'] ?? specs['landLatitude'];
+          if (lat != null) _landLatitude = double.tryParse(lat.toString());
 
-        final lng = specs['land_longitude'] ?? specs['landLongitude'];
-        if (lng != null) _landLongitude = double.tryParse(lng.toString());
+          final lng = specs['land_longitude'] ?? specs['landLongitude'];
+          if (lng != null) _landLongitude = double.tryParse(lng.toString());
 
-        if (_landLatitude != null && _landLongitude != null) {
-          _landLocationController.text = '${_landLatitude!.toStringAsFixed(6)}, ${_landLongitude!.toStringAsFixed(6)}';
+          if (_landLatitude != null && _landLongitude != null) {
+            _landLocationController.text = '${_landLatitude!.toStringAsFixed(6)}, ${_landLongitude!.toStringAsFixed(6)}';
+          }
         }
       } else if (_category == 'building') {
         final buildingArea = specs['building_area'] ?? specs['buildingArea'];
@@ -389,23 +391,25 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         final buildingType = specs['building_type'] ?? specs['buildingType'];
         if (buildingType != null) _buildingTypeController.text = buildingType.toString();
 
-        final buildingLocation = specs['building_location'] ?? specs['buildingLocation'];
-        if (buildingLocation != null) _buildingLocationController.text = buildingLocation.toString();
-
         final floors = specs['number_of_floors'] ?? specs['numberOfFloors'];
         if (floors != null) _numberOfFloorsController.text = floors.toString();
 
         final yearBuilt = specs['year_built'] ?? specs['yearBuilt'];
         if (yearBuilt != null) _yearBuiltController.text = yearBuilt.toString();
 
-        final lat = specs['building_latitude'] ?? specs['buildingLatitude'];
-        if (lat != null) _buildingLatitude = double.tryParse(lat.toString());
+        if (!isOnline) {
+          final buildingLocation = specs['building_location'] ?? specs['buildingLocation'];
+          if (buildingLocation != null) _buildingLocationController.text = buildingLocation.toString();
 
-        final lng = specs['building_longitude'] ?? specs['buildingLongitude'];
-        if (lng != null) _buildingLongitude = double.tryParse(lng.toString());
+          final lat = specs['building_latitude'] ?? specs['buildingLatitude'];
+          if (lat != null) _buildingLatitude = double.tryParse(lat.toString());
 
-        if (_buildingLatitude != null && _buildingLongitude != null) {
-          _buildingLocationController.text = '${_buildingLatitude!.toStringAsFixed(6)}, ${_buildingLongitude!.toStringAsFixed(6)}';
+          final lng = specs['building_longitude'] ?? specs['buildingLongitude'];
+          if (lng != null) _buildingLongitude = double.tryParse(lng.toString());
+
+          if (_buildingLatitude != null && _buildingLongitude != null) {
+            _buildingLocationController.text = '${_buildingLatitude!.toStringAsFixed(6)}, ${_buildingLongitude!.toStringAsFixed(6)}';
+          }
         }
       } else if (_category == 'vehicle') {
         final make = specs['vehicle_make'] ?? specs['vehicleMake'] ?? specs['make'];
@@ -417,14 +421,16 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         final year = specs['vehicle_year'] ?? specs['vehicleYear'] ?? specs['year'];
         if (year != null) _vehicleYearController.text = year.toString();
 
-        final reg = specs['vehicle_registration_number'] ?? specs['vehicleRegistrationNumber'] ?? specs['registration_number'];
-        if (reg != null) _vehicleRegistrationController.text = reg.toString();
-
-        final mileage = specs['vehicle_mileage'] ?? specs['vehicleMileage'] ?? specs['mileage'];
-        if (mileage != null) _vehicleMileageController.text = mileage.toString();
-
         final cond = specs['vehicle_condition'] ?? specs['vehicleCondition'] ?? specs['condition'];
         if (cond != null) _vehicleConditionController.text = cond.toString();
+
+        if (!isOnline) {
+          final reg = specs['vehicle_registration_number'] ?? specs['vehicleRegistrationNumber'] ?? specs['registration_number'];
+          if (reg != null) _vehicleRegistrationController.text = reg.toString();
+
+          final mileage = specs['vehicle_mileage'] ?? specs['vehicleMileage'] ?? specs['mileage'];
+          if (mileage != null) _vehicleMileageController.text = mileage.toString();
+        }
       } else if (_category == 'other') {
         final otherType = specs['other_type'] ?? specs['otherType'] ?? specs['other_specifications'];
         if (otherType != null) _otherTypeController.text = otherType.toString();
@@ -685,7 +691,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                                         icon: const Icon(Icons.check_rounded),
                                         label: const Text('Confirm & Use'),
                                         onPressed: () {
-                                          _autofillValuationForm(selectedItem);
+                                          _autofillValuationForm(selectedItem, isOnline: selectedOption == 'online');
                                           Navigator.pop(context);
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             const SnackBar(
