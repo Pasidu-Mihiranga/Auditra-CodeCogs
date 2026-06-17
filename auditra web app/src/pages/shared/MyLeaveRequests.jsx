@@ -46,6 +46,26 @@ export default function MyLeaveRequests() {
   const [form, setForm] = useState(defaultForm);
   const [submitting, setSubmitting] = useState(false);
 
+  const getTodayDateString = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const todayStr = getTodayDateString();
+
+  const handleStartDateChange = (val) => {
+    const newForm = { ...form, start_date: val };
+    if (form.is_half_day) {
+      newForm.end_date = val;
+    } else if (form.end_date && form.end_date < val) {
+      newForm.end_date = val;
+    }
+    setForm(newForm);
+  };
+
   const fetchData = async () => {
     try {
       const [reqRes, balRes, statsRes] = await Promise.all([
@@ -250,7 +270,8 @@ export default function MyLeaveRequests() {
                 <Grid item xs={6}>
                   <TextField fullWidth label="Date" type="date" value={form.start_date}
                     onChange={(e) => setForm({ ...form, start_date: e.target.value, end_date: e.target.value })}
-                    InputLabelProps={{ shrink: true }} required />
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: todayStr }} required />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField select fullWidth label="Period" value={form.half_day_period}
@@ -264,13 +285,15 @@ export default function MyLeaveRequests() {
               <>
                 <Grid item xs={6}>
                   <TextField fullWidth label="Start Date" type="date" value={form.start_date}
-                    onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-                    InputLabelProps={{ shrink: true }} required />
+                    onChange={(e) => handleStartDateChange(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: todayStr }} required />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField fullWidth label="End Date" type="date" value={form.end_date}
                     onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-                    InputLabelProps={{ shrink: true }} required />
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: form.start_date || todayStr }} required />
                 </Grid>
               </>
             )}
