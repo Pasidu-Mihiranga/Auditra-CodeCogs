@@ -432,6 +432,15 @@ export default function ProjectDetail() {
   if (loading) return <LoadingSpinner />;
   if (!project) return <Alert severity="error">Project not found</Alert>;
 
+  const getMediaUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    
+    let baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+    baseUrl = baseUrl.replace(/\/api\/?$/, '');
+    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
   const isCoordinator = role === 'coordinator';
   const standupAllowed = ['admin', 'coordinator', 'field_officer', 'accessor', 'senior_valuer', 'md_gm'].includes(role);
   const isPending = project.status === 'pending';
@@ -851,7 +860,7 @@ export default function ProjectDetail() {
                     <Button
                       variant="outlined"
                       startIcon={<Receipt />}
-                      href={payment.bank_slip_url}
+                      href={getMediaUrl(payment.bank_slip_url)}
                       target="_blank"
                       size="small"
                     >
