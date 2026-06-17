@@ -136,14 +136,18 @@ export default function ProjectValuationReviewTable({
                       <Chip
                         label={capitalize(project.priority) || 'Normal'}
                         size="small"
-                        sx={{
-                          bgcolor: `${getPriorityColor(project.priority)}20`,
-                          color: getPriorityColor(project.priority),
-                          fontWeight: 600,
-                          fontSize: 12,
-                          width: 110,
-                          justifyContent: 'center',
-                          border: `1px solid ${getPriorityColor(project.priority)}50`,
+                        sx={(theme) => {
+                          const isDark = theme.palette.mode === 'dark';
+                          const color = getPriorityColor(project.priority, isDark);
+                          return {
+                            bgcolor: `${color}20`,
+                            color,
+                            fontWeight: 600,
+                            fontSize: 12,
+                            width: 110,
+                            justifyContent: 'center',
+                            border: `1px solid ${color}50`,
+                          };
                         }}
                       />
                     </TableCell>

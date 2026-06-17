@@ -1,4 +1,5 @@
 import Chip from '@mui/material/Chip';
+import { useTheme } from '@mui/material/styles';
 import { capitalize, getPriorityColor } from '../utils/helpers';
 
 export default function PriorityChip({
@@ -7,7 +8,9 @@ export default function PriorityChip({
   width = 110,
   fontSize = 12,
 }) {
-  const color = getPriorityColor(priority);
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const color = getPriorityColor(priority, isDark);
 
   return (
     <Chip

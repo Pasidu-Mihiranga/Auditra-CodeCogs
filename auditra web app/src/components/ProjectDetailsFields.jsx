@@ -25,7 +25,6 @@ export default function ProjectDetailsFields({
       </Grid>
       <Grid item xs={12} sm={4}>
         <TextField select fullWidth label="Priority" name="priority" value={form.priority} onChange={onChange}>
-          <MenuItem value="urgent">Urgent</MenuItem>
           <MenuItem value="high">High</MenuItem>
           <MenuItem value="medium">Medium</MenuItem>
           <MenuItem value="low">Low</MenuItem>

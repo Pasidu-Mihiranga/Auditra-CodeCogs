@@ -20,7 +20,16 @@ export const getStatusColor = (status) => {
   return colors[status] || '#90CAF9';
 };
 
-export const getPriorityColor = (priority) => {
+export const getPriorityColor = (priority, isDark = false) => {
+  if (isDark) {
+    const colors = {
+      urgent: '#ea80fc',  // light purple
+      high: '#ff8a80',    // light red
+      medium: '#ffb74d',  // light orange
+      low: '#81c784',     // light green
+    };
+    return colors[priority] || '#94A3B8';
+  }
   const colors = {
     urgent: '#6A1B9A',  // deep purple
     high: '#d32f2f',    // red
@@ -30,7 +39,16 @@ export const getPriorityColor = (priority) => {
   return colors[priority] || '#64748B';
 };
 
-export const getPriorityBgColor = (priority) => {
+export const getPriorityBgColor = (priority, isDark = false) => {
+  if (isDark) {
+    const colors = {
+      urgent: 'rgba(234, 128, 252, 0.16)', // translucent light purple
+      high: 'rgba(255, 138, 128, 0.16)',   // translucent light red
+      medium: 'rgba(255, 183, 77, 0.16)',  // translucent light orange
+      low: 'rgba(129, 199, 132, 0.16)',    // translucent light green
+    };
+    return colors[priority] || 'rgba(148, 163, 184, 0.12)';
+  }
   const colors = {
     urgent: '#f3e5f5',
     high: '#fdecea',
