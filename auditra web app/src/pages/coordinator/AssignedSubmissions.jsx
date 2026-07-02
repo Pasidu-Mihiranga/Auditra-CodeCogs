@@ -106,7 +106,14 @@ export default function AssignedSubmissions() {
         message: 'Assignment accepted! Click "Create Project" to create a project.',
         severity: 'success'
       });
-      fetchSubmissions();
+      // On the Pending tab the accepted row would be filtered out (empty table).
+      // Switch to the Accepted tab so it stays visible with the "Create" action.
+      if (responseFilter === 'pending') {
+        setPage(0);
+        setResponseFilter('accepted');
+      } else {
+        fetchSubmissions();
+      }
     } catch (err) {
       setSnackbar({
         open: true,

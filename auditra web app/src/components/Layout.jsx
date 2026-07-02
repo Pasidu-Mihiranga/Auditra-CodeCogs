@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { roleMenuConfig, getRoleLabel, resolveRoleKey } from '../utils/roleConfig';
 import NotificationDropdown from './NotificationDropdown';
 import UserAvatar from './UserAvatar';
+import ErrorBoundary from './ErrorBoundary';
 
 const DRAWER_WIDTH = 260;
 const DRAWER_COLLAPSED = 72;
@@ -302,7 +303,9 @@ export default function Layout() {
           {['client', 'agent'].includes(role) && passwordChanged === false && location.pathname !== '/dashboard/force-change-password' ? (
             <Navigate to="/dashboard/force-change-password" replace />
           ) : (
-            <Outlet />
+            <ErrorBoundary resetKey={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           )}
         </Box>
       </Box>
