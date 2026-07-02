@@ -213,7 +213,7 @@ class _ValuationHistoryScreenState extends State<ValuationHistoryScreen> {
                       },
                       style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827)),
                       decoration: InputDecoration(
-                        hintText: 'Search history by project or details...',
+                        hintText: 'Search by project title, category, or details',
                         hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,

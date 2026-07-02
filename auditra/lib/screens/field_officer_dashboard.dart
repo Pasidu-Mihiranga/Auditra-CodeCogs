@@ -1322,7 +1322,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     },
                     style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827)),
                     decoration: InputDecoration(
-                      hintText: 'Search projects by location or ID...',
+                      hintText: 'Search by project title or description',
                       hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,

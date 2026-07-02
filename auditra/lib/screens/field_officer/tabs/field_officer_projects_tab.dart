@@ -128,7 +128,7 @@ class _FieldOfficerProjectsTabState extends State<FieldOfficerProjectsTab> {
                             child: TextField(
                               controller: _searchController,
                               decoration: InputDecoration(
-                                hintText: 'Search projects...',
+                                hintText: 'Search by project title or description',
                                 prefixIcon: const Icon(Icons.search, size: 20),
                                 suffixIcon: _searchController.text.isNotEmpty
                                     ? IconButton(
