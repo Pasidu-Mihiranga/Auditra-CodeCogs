@@ -32,8 +32,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  final _bioCtrl = TextEditingController();
-  bool _saving = false;
   bool _uploading = false;
   String? _avatarUrl;
 
@@ -72,7 +70,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _firstNameCtrl.text = (data['first_name'] ?? '').toString();
           _lastNameCtrl.text = (data['last_name'] ?? '').toString();
           _phoneCtrl.text = (profile['phone'] ?? '').toString();
-          _bioCtrl.text = (profile['bio'] ?? '').toString();
           _avatarUrl = profile['profile_image_url']?.toString();
           _loading = false;
         });
@@ -189,29 +186,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _phoneCtrl.dispose();
-    _bioCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _save() async {
-    setState(() { _saving = true; });
-    final result = await ApiService.updateUserProfile({
-      'first_name': _firstNameCtrl.text.trim(),
-      'last_name': _lastNameCtrl.text.trim(),
-      'phone': _phoneCtrl.text.trim(),
-      'bio': _bioCtrl.text.trim(),
-    });
-    if (!mounted) return;
-    setState(() { _saving = false; });
-    if (result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated'), backgroundColor: AppColors.success),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result['message'] ?? 'Update failed'), backgroundColor: AppColors.error),
-      );
-    }
   }
 
   Future<void> _pickAvatar() async {
@@ -636,7 +611,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       context: context,
                       icon: Icons.person_outline_rounded,
                       title: 'Personal Information',
-                      subtitle: 'Manage your account details',
+                      subtitle: 'View your account details',
                       isDark: isDark,
                       onTap: () => _showEditProfileDialog(context),
                     ),
@@ -946,99 +921,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showEditProfileDialog(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final profile = (_profile?['profile'] is Map)
+        ? Map<String, dynamic>.from(_profile!['profile'] as Map)
+        : <String, dynamic>{};
+    final roleInfo = (_profile?['role_info'] is Map)
+        ? Map<String, dynamic>.from(_profile!['role_info'] as Map)
+        : <String, dynamic>{};
+    final firstName = (_profile?['first_name'] ?? '').toString();
+    final lastName = (_profile?['last_name'] ?? '').toString();
+    final email = (_profile?['email'] ?? '').toString();
+    final phone = (profile['phone'] ?? '').toString();
+    final username = (_profile?['username'] ?? '').toString();
+    final role = (roleInfo['role_display'] ?? '').toString();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(24),
-                  topRight: Radius.circular(24),
+        return Container(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF475569) : const Color(0xFFE5E7EB),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF475569) : const Color(0xFFE5E7EB),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Edit Personal Information',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white : const Color(0xFF111827),
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _modalField('First Name', _firstNameCtrl, isDark),
-                    _modalField('Last Name', _lastNameCtrl, isDark),
-                    _modalField('Phone', _phoneCtrl, isDark),
-                    _modalField('Bio', _bioCtrl, isDark, maxLines: 3),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _saving
-                            ? null
-                            : () async {
-                                setModalState(() => _saving = true);
-                                await _save();
-                                if (context.mounted) {
-                                  Navigator.pop(context);
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                        child: _saving
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'Save Changes',
-                                style: TextStyle(fontWeight: FontWeight.w900),
-                              ),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 20),
+                Text(
+                  'Personal Information',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    letterSpacing: -0.5,
+                  ),
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 16),
+                _readOnlyField('First Name', firstName, isDark),
+                _readOnlyField('Last Name', lastName, isDark),
+                _readOnlyField('Email', email, isDark),
+                _readOnlyField('Phone', phone, isDark),
+                _readOnlyField('Username', username, isDark),
+                _readOnlyField('Role', role, isDark),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
         );
       },
     );
   }
 
-  Widget _modalField(String label, TextEditingController ctrl, bool isDark, {int maxLines = 1}) {
+  Widget _readOnlyField(String label, String value, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -1053,32 +1004,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          TextField(
-            controller: ctrl,
-            maxLines: maxLines,
-            style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827), fontSize: 14),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF9FAFB),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
-                ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE5E7EB),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: AppColors.accent,
-                  width: 2,
-                ),
+            ),
+            child: Text(
+              value.isEmpty ? '-' : value,
+              style: TextStyle(
+                color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF6B7280),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
