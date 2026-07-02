@@ -168,6 +168,7 @@ export default function AccessorProjects() {
         tabsPaperSx={{ mb: 3 }}
         search={searchQuery}
         onSearchChange={setSearchQuery}
+        searchPlaceholder="Search by project title or description"
         searchSx={{ mb: 3 }}
       />
 

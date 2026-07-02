@@ -70,6 +70,7 @@ export default function ProjectList() {
         tabsSx={{ mb: 2 }}
         search={search}
         onSearchChange={setSearch}
+        searchPlaceholder="Search by project title"
         searchSx={{ mb: 2 }}
         searchSize="small"
       />

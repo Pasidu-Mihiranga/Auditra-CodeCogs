@@ -345,7 +345,7 @@ export default function SystemLogs() {
       <Paper sx={{ p: 2, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           size="small"
-          placeholder="Search logs..."
+          placeholder="Search logs by user, action, or description"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           InputProps={{

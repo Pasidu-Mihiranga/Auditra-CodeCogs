@@ -73,7 +73,7 @@ export default function AllProjectItems() {
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
         <TextField
           size="small"
-          placeholder="Search by name..."
+          placeholder="Search by item name"
           value={search}
           onChange={e => setSearch(e.target.value)}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
