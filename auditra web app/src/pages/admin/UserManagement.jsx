@@ -76,7 +76,7 @@ export default function UserManagement() {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
-      <TextField fullWidth placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)}
+      <TextField fullWidth placeholder="Search by username, email, or first name" value={search} onChange={(e) => setSearch(e.target.value)}
         InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }}
         sx={{ mb: 3 }} size="small" />
 
@@ -106,6 +106,7 @@ export default function UserManagement() {
                     onChange={(e) => handleRoleChange(u.id, e.target.value)}
                     sx={{ minWidth: 140, fontSize: 13 }}
                     disabled={u.role === 'admin'}
+                    renderValue={(value) => getRoleLabel(value)}
                   >
                     {roles.map((r) => (
                       <MenuItem key={r.value || r} value={r.value || r}>{r.label || getRoleLabel(r)}</MenuItem>
