@@ -119,6 +119,13 @@ function RoleDashboard() {
   }
 }
 
+// Catch-all: send authenticated users to their dashboard, others to landing.
+function CatchAllRedirect() {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return null;
+  return <Navigate to={isAuthenticated ? '/dashboard' : '/'} replace />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -206,7 +213,7 @@ export default function App() {
       </Route>
 
       {/* Catch all - redirect to dashboard if authenticated, else to landing */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<CatchAllRedirect />} />
     </Routes>
   );
 }

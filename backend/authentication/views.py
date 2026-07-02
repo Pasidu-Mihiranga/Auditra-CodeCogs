@@ -241,7 +241,7 @@ class ChangePasswordView(APIView):
             title='Password changed',
             message='Your password was changed successfully.',
             meta={'user_id': user.id},
-            action_url='/profile',
+            action_url='/dashboard/profile',
         )
 
         return Response(
@@ -404,7 +404,7 @@ class AssignRoleView(APIView):
                 title='Role updated',
                 message=f'Your role has been updated to "{role}".',
                 meta={'user_id': user.id, 'role': role},
-                action_url='/profile',
+                action_url='/dashboard/profile',
                 actor=request.user,
             )
 
@@ -626,7 +626,7 @@ class GeneratePaymentSlipsView(APIView):
                 title='Payment slips generated',
                 message=f'Generated/updated payment slips for {month}/{year}.',
                 meta={'month': month, 'year': year, 'generated': generated_count, 'updated': updated_count},
-                action_url='/dashboard/payment-slips',
+                action_url='/dashboard/payments',
             )
             
             return Response({
@@ -716,11 +716,11 @@ class UploadPaymentSlipsView(APIView):
                     recipients,
                     category='payment',
                     severity='info',
-                    title='Payment slip available',
-                    message=f'Your payment slip for {month}/{year} is now published.',
-                    meta={'month': month, 'year': year},
-                    action_url='/payment-slips',
-                    actor=request.user,
+                title='Payment slip available',
+                message=f'Your payment slip for {month}/{year} is now published.',
+                meta={'month': month, 'year': year},
+                action_url='/dashboard/my-payments',
+                actor=request.user,
                 )
             except Exception:
                 pass
@@ -1225,7 +1225,7 @@ class ClientRegistrationView(APIView):
                         title='New client form submission',
                         message=f'{submission.first_name} {submission.last_name} submitted a new client form.',
                         meta={'submission_id': submission.id},
-                        action_url='/dashboard/submissions',
+                        action_url='/dashboard/client-submissions',
                     )
                 except Exception:
                     pass
@@ -1655,9 +1655,9 @@ class UpdateLeaveRequestView(APIView):
                     severity='success' if new_status == 'approved' else 'warning',
                     title=title,
                     message=msg,
-                    meta={'leave_id': leave_request.id, 'status': new_status},
-                    action_url='/dashboard/my-leave-requests',
-                    email_subject=title,
+                meta={'leave_id': leave_request.id, 'status': new_status},
+                action_url='/dashboard/my-leave',
+                email_subject=title,
                 )
             except Exception:
                 pass
@@ -2093,19 +2093,31 @@ class ClientSubmissionDetailView(APIView):
             except Exception:
                 pass
             try:
-                recipients = [submission.coordinator] if submission.coordinator else []
+                update_msg = f'Status updated to {new_status or submission.status} for {submission.first_name} {submission.last_name}.'
+                update_meta = {'submission_id': submission.id, 'status': submission.status}
+                # Coordinators view their assignments under a different route than admins.
+                if submission.coordinator:
+                    _notify_auth_users(
+                        [submission.coordinator],
+                        category='submission',
+                        severity='info',
+                        title='Client submission updated',
+                        message=update_msg,
+                        meta=update_meta,
+                        action_url='/dashboard/assigned-submissions',
+                        actor=request.user,
+                    )
                 if hasattr(request.user, 'role') and request.user.role.role == 'admin':
-                    recipients.extend(list(User.objects.filter(role__role='admin', is_active=True)))
-                _notify_auth_users(
-                    recipients,
-                    category='submission',
-                    severity='info',
-                    title='Client submission updated',
-                    message=f'Status updated to {new_status or submission.status} for {submission.first_name} {submission.last_name}.',
-                    meta={'submission_id': submission.id, 'status': submission.status},
-                    action_url='/dashboard/submissions',
-                    actor=request.user,
-                )
+                    _notify_auth_users(
+                        list(User.objects.filter(role__role='admin', is_active=True)),
+                        category='submission',
+                        severity='info',
+                        title='Client submission updated',
+                        message=update_msg,
+                        meta=update_meta,
+                        action_url='/dashboard/client-submissions',
+                        actor=request.user,
+                    )
             except Exception:
                 pass
 
@@ -2141,7 +2153,7 @@ class ClientSubmissionDetailView(APIView):
                 title='Submission cancelled',
                 message=f'Cancelled rejected submission from {submission.first_name} {submission.last_name}.',
                 meta={'submission_id': submission.id},
-                action_url='/dashboard/submissions',
+                action_url='/dashboard/client-submissions',
             )
 
             submission.delete()
@@ -2222,7 +2234,7 @@ class AssignCoordinatorView(APIView):
                 title='New Submission Assigned to You',
                 message=f'You have been assigned as coordinator for the submission from {client_name}. Please review and respond.',
                 meta={'submission_id': submission.id},
-                action_url='/dashboard/submissions',
+                action_url='/dashboard/assigned-submissions',
             )
         except Exception:
             pass
@@ -2327,7 +2339,7 @@ class ApproveClientSubmissionView(APIView):
                         title='Client Submission Approved',
                         message=f'Submission from {client_name} has been approved and is ready for project setup.',
                         meta={'submission_id': submission.id},
-                        action_url='/dashboard/submissions',
+                        action_url='/dashboard/client-submissions',
                     )
             except Exception:
                 pass
@@ -2686,7 +2698,7 @@ class AcceptAssignmentView(APIView):
                 title='Coordinator accepted assignment',
                 message=f'{request.user.get_full_name() or request.user.username} accepted a submission assignment.',
                 meta={'submission_id': submission.id},
-                action_url='/dashboard/submissions',
+                action_url='/dashboard/client-submissions',
                 actor=request.user,
             )
             
@@ -2776,7 +2788,7 @@ class RejectAssignmentView(APIView):
                 title='Coordinator rejected assignment',
                 message=f'{request.user.get_full_name() or request.user.username} rejected an assignment. Reason: {rejection_reason}',
                 meta={'submission_id': submission.id, 'reason': rejection_reason},
-                action_url='/dashboard/submissions',
+                action_url='/dashboard/client-submissions',
                 actor=request.user,
             )
             
@@ -3100,6 +3112,40 @@ class PublicCheckEmailView(APIView):
             })
         except User.DoesNotExist:
             return Response({'exists': False, 'conflict': False, 'normalized_intent': intent})
+
+
+class PublicLandingStatsThrottle(AnonRateThrottle):
+    rate = '60/min'
+
+
+class PublicLandingStatsView(APIView):
+    """Public, rate-limited landing-page statistics sourced from live data."""
+    permission_classes = []
+    throttle_classes = [PublicLandingStatsThrottle]
+
+    # Roles that are NOT counted as professionals/staff.
+    NON_STAFF_ROLES = ('client', 'agent', 'unassigned')
+
+    def get(self, request):
+        from datetime import date
+        from django.conf import settings
+        from projects.models import Project
+
+        projects_completed = Project.objects.filter(status='completed').count()
+        professionals = (
+            UserRole.objects
+            .filter(user__is_active=True)
+            .exclude(role__in=self.NON_STAFF_ROLES)
+            .count()
+        )
+        founding_year = getattr(settings, 'FOUNDING_YEAR', 2010)
+        years_experience = max(date.today().year - founding_year, 0)
+
+        return Response({
+            'projects_completed': projects_completed,
+            'professionals': professionals,
+            'years_experience': years_experience,
+        })
 
 
 # ============================================================================

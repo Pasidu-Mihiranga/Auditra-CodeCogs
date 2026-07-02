@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography,
   Button, Select, MenuItem, FormControl, InputLabel, Paper,
@@ -11,6 +12,7 @@ export default function NotificationsPage() {
   const [category, setCategory] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const { notifications, fetchNotifications, markRead, markAllRead } = useNotifications();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const params = {};
@@ -53,6 +55,7 @@ export default function NotificationsPage() {
           showUnreadBadge
           onNotificationClick={(n) => {
             if (!n.is_read) markRead(n.id);
+            if (n.action_url) navigate(n.action_url);
           }}
           emptyMessage="No notifications to display"
         />

@@ -28,7 +28,7 @@ def _notify_attendance_action(user, title, message, action, extra_meta=None):
             title=title,
             message=message,
             meta=meta,
-            action_url='/attendance',
+            action_url='/dashboard/my-attendance',
             email_subject=title,
         )
     except Exception:
