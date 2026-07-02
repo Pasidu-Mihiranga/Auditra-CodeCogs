@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -71,6 +71,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   final _landLocationController = TextEditingController();
   double? _landLatitude;
   double? _landLongitude;
+  double? _locationAccuracyMeters;
   
   // Building fields
   final _buildingAreaController = TextEditingController();
@@ -1184,13 +1185,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       'captured_at': DateTime.now().toIso8601String(),
       'device_id': await _getDeviceId(),
     };
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-      ).timeout(const Duration(seconds: 8));
-      meta['gps_lat'] = pos.latitude;
-      meta['gps_lon'] = pos.longitude;
-    } catch (_) {}
+    final loc = await OfflineLocationService.getPhotoLocation();
+    if (loc['success'] == true && loc['latitude'] != null && loc['longitude'] != null) {
+      meta['gps_lat'] = loc['latitude'];
+      meta['gps_lon'] = loc['longitude'];
+      if (loc['accuracy'] != null) {
+        meta['gps_accuracy'] = loc['accuracy'];
+      }
+    }
     return meta;
   }
 
@@ -1234,6 +1236,73 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     }
   }
 
+  String _locationFailureMessage(String? reason) {
+    switch (reason) {
+      case 'service_disabled':
+        return 'Location services are off. Enable GPS and reopen the report.';
+      case 'permission_denied':
+      case 'permission_denied_forever':
+        return 'Location permission denied. Allow precise location to capture coordinates.';
+      case 'reduced_precision':
+        return 'Precise location is required. Enable Precise Location for Auditra in settings.';
+      case 'accurate_fix_timeout':
+        return 'GPS not ready yet. Stay outdoors with clear sky — coordinates were not saved.';
+      default:
+        return 'Could not get an accurate GPS fix. Coordinates were not saved.';
+    }
+  }
+
+  void _clearCategoryLocation() {
+    if (_category == 'land') {
+      _landLatitude = null;
+      _landLongitude = null;
+      _landLocationController.clear();
+    } else if (_category == 'building') {
+      _buildingLatitude = null;
+      _buildingLongitude = null;
+      _buildingLocationController.clear();
+    }
+    _locationAccuracyMeters = null;
+  }
+
+  Widget _buildLocationAccuracyHint(bool isDark) {
+    if (_isLoading) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Waiting for accurate GPS fix...',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+          ),
+        ),
+      );
+    }
+    if (_locationAccuracyMeters != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Accuracy: ±${_locationAccuracyMeters!.toStringAsFixed(0)} m',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? const Color(0xFF86EFAC) : const Color(0xFF15803D),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'GPS not ready',
+        style: TextStyle(
+          fontSize: 12,
+          color: isDark ? Colors.orange[300] : Colors.orange[800],
+        ),
+      ),
+    );
+  }
+
   /// Requests device GPS and fills the location field for the active category.
   /// Rounds coordinates to 6 decimal places to match the backend DecimalField precision.
   /// Called automatically on screen load for land/building, and when category changes.
@@ -1241,44 +1310,48 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     setState(() => _isLoading = true);
     try {
       final locData = await OfflineLocationService.getCurrentLocation();
-      final double lat = locData['latitude'] as double;
-      final double lng = locData['longitude'] as double;
-      final bool isDefault = locData['isDefault'] as bool;
+      final success = locData['success'] == true;
+      final lat = locData['latitude'];
+      final lng = locData['longitude'];
 
-      // Round to 6 decimal places to match backend DecimalField(max_digits=9, decimal_places=6)
-      final roundedLat = double.parse(lat.toStringAsFixed(6));
-      final roundedLng = double.parse(lng.toStringAsFixed(6));
-      
-      final locationText = '$roundedLat, $roundedLng';
-
-      setState(() {
-        if (_category == 'land') {
-          _landLatitude = roundedLat;
-          _landLongitude = roundedLng;
-          _landLocationController.text = locationText;
-        } else if (_category == 'building') {
-          _buildingLatitude = roundedLat;
-          _buildingLongitude = roundedLng;
-          _buildingLocationController.text = locationText;
+      if (success && lat is num && lng is num) {
+        final roundedLat = double.parse(lat.toDouble().toStringAsFixed(6));
+        final roundedLng = double.parse(lng.toDouble().toStringAsFixed(6));
+        final locationText = '$roundedLat, $roundedLng';
+        final accuracy = locData['accuracy'];
+        setState(() {
+          _locationAccuracyMeters = accuracy is num ? accuracy.toDouble() : null;
+          if (_category == 'land') {
+            _landLatitude = roundedLat;
+            _landLongitude = roundedLng;
+            _landLocationController.text = locationText;
+          } else if (_category == 'building') {
+            _buildingLatitude = roundedLat;
+            _buildingLongitude = roundedLng;
+            _buildingLocationController.text = locationText;
+          }
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _clearCategoryLocation();
+          _isLoading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_locationFailureMessage(locData['reason'] as String?)),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+            ),
+          );
         }
-        _isLoading = false;
-      });
-      
-      // Trigger rebuild to show Google Maps link
-      if (mounted) {
-        setState(() {});
-      }
-
-      if (isDefault && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ Using default fallback location. Check GPS / permissions.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _clearCategoryLocation();
+        _isLoading = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error getting location: $e')),
@@ -1476,6 +1549,24 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         
         // Show offline indicator if saved offline
         if (!synced && mounted) {
+          final localId = valuationData is Map ? valuationData['localId'] as String? : null;
+          if (localId != null && _selectedPhotos.isNotEmpty) {
+            for (var i = 0; i < _selectedPhotos.length; i++) {
+              final photo = _selectedPhotos[i];
+              final meta = i < _photoMeta.length ? _photoMeta[i] : <String, dynamic>{};
+              try {
+                await OfflineStorageService.savePhotoOffline(
+                  photo,
+                  localId,
+                  gpsLat: meta['gps_lat'] is num ? (meta['gps_lat'] as num).toDouble() : null,
+                  gpsLon: meta['gps_lon'] is num ? (meta['gps_lon'] as num).toDouble() : null,
+                );
+              } catch (e) {
+                if (kDebugMode) debugPrint('Offline photo save failed: $e');
+              }
+            }
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('💾 Valuation saved offline. Will sync when connection is restored.'),
@@ -3039,6 +3130,11 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                 ),
                 readOnly: true,
               ),
+              _buildLocationAccuracyHint(isDark),
+              if (_landLatitude != null && _landLongitude != null) ...[
+                const SizedBox(height: 12),
+                _buildGoogleMapsLink(),
+              ],
             ],
           ),
         ),
@@ -3133,6 +3229,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                 ),
                 readOnly: true,
               ),
+              _buildLocationAccuracyHint(isDark),
               // Google Maps link for building location
               if (_buildingLatitude != null && _buildingLongitude != null) ...[
                 const SizedBox(height: 12),
