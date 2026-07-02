@@ -4,7 +4,7 @@ import {
   Box, Paper, Typography, TextField, Button,
   IconButton, CircularProgress, Alert, Chip,
 } from '@mui/material';
-import { CameraAlt, Save, Lock, DesktopWindows, LightMode, DarkMode, CheckCircle } from '@mui/icons-material';
+import { CameraAlt, Lock, DesktopWindows, LightMode, DarkMode, CheckCircle } from '@mui/icons-material';
 import axiosClient from '../../api/axiosClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { useThemeMode } from '../../contexts/ThemeContext';
@@ -18,55 +18,28 @@ export default function Profile() {
   const fileInputRef = useRef(null);
 
   const [profile, setProfile] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
-
-  const [form, setForm] = useState({
-    first_name: '',
-    last_name: '',
-    phone: '',
-    bio: '',
-    timezone: 'Asia/Colombo',
-  });
 
   useEffect(() => {
     axiosClient.get('/auth/profile/me/').then((res) => {
       const data = res.data;
       setProfile(data);
-      setForm({
-        first_name: data.first_name || '',
-        last_name: data.last_name || '',
-        phone: data.profile?.phone || '',
-        bio: data.profile?.bio || '',
-        timezone: data.profile?.timezone || 'Asia/Colombo',
-      });
       if (data.profile?.theme_preference) {
         applyServerTheme(data.profile.theme_preference);
       }
     }).catch(() => {});
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await axiosClient.patch('/auth/profile/me/', {
-        first_name: form.first_name,
-        last_name: form.last_name,
-        phone: form.phone,
-        bio: form.bio,
-        timezone: form.timezone,
-        theme_preference: preference,
-      });
-      setSuccess('Profile updated successfully');
-      if (updateUser) updateUser({ ...user, first_name: form.first_name, last_name: form.last_name });
-    } catch (e) {
-      setError('Failed to save profile');
-    }
-    setSaving(false);
+  // Read-only personal details, sourced from the database.
+  const personalInfo = {
+    first_name: profile?.first_name || user?.first_name || '',
+    last_name: profile?.last_name || user?.last_name || '',
+    email: profile?.email || user?.email || '',
+    phone: profile?.profile?.phone || '',
+    username: profile?.username || user?.username || '',
+    role: profile?.role_info?.role_display || '',
   };
 
   const handleAvatarUpload = async (e) => {
@@ -142,7 +115,7 @@ export default function Profile() {
         </Box>
         <Box>
           <Typography variant="h6" fontWeight={600}>
-            {form.first_name} {form.last_name || user?.username}
+            {personalInfo.first_name} {personalInfo.last_name || personalInfo.username}
           </Typography>
           <Typography variant="body2" color="text.secondary">{user?.email}</Typography>
           {profile?.role_info?.role_display && (
@@ -151,40 +124,19 @@ export default function Profile() {
         </Box>
       </Paper>
 
-      {/* Personal info */}
+      {/* Personal info (read-only, sourced from the database) */}
       <Paper sx={{ p: 3, mb: 3, borderRadius: 3 }}>
         <Typography variant="subtitle1" fontWeight={600} mb={2}>Personal Information</Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-          <TextField
-            label="First Name" value={form.first_name}
-            onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
-            fullWidth size="small"
-          />
-          <TextField
-            label="Last Name" value={form.last_name}
-            onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
-            fullWidth size="small"
-          />
+          <TextField label="First Name" value={personalInfo.first_name} fullWidth size="small" disabled />
+          <TextField label="Last Name" value={personalInfo.last_name} fullWidth size="small" disabled />
         </Box>
-        <TextField
-          label="Email (read-only)" value={user?.email || ''} fullWidth size="small"
-          sx={{ mt: 2 }} disabled
-        />
-        <TextField
-          label="Phone" value={form.phone}
-          onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-          fullWidth size="small" sx={{ mt: 2 }}
-        />
-        <TextField
-          label="Bio" value={form.bio}
-          onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
-          fullWidth multiline rows={3} size="small" sx={{ mt: 2 }}
-        />
-        <TextField
-          label="Timezone" value={form.timezone}
-          onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
-          fullWidth size="small" sx={{ mt: 2 }}
-        />
+        <TextField label="Email" value={personalInfo.email} fullWidth size="small" sx={{ mt: 2 }} disabled />
+        <TextField label="Phone" value={personalInfo.phone} fullWidth size="small" sx={{ mt: 2 }} disabled />
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mt: 2 }}>
+          <TextField label="Username" value={personalInfo.username} fullWidth size="small" disabled />
+          <TextField label="Role" value={personalInfo.role} fullWidth size="small" disabled />
+        </Box>
       </Paper>
 
       {/* Preferences */}
@@ -267,16 +219,6 @@ export default function Profile() {
           Change Password
         </Button>
       </Paper>
-
-      {/* Save */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained" startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save />}
-          onClick={handleSave} disabled={saving}
-        >
-          Save Changes
-        </Button>
-      </Box>
     </Box>
   );
 }
