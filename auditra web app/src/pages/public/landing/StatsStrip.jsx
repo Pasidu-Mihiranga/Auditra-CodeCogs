@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Box, Container, Grid, Typography } from '@mui/material';
+import axiosClient from '../../../api/axiosClient';
 
-const stats = [
-    { target: 500, suffix: '+', label: 'Projects Completed' },
-    { target: 15, suffix: '+', label: 'Years of Experience' },
-    { target: 300, suffix: '+', label: 'Satisfied Clients' },
-    { target: 50, suffix: '+', label: 'Professionals' },
+// Fallback values used until live stats load (or if the request fails).
+const DEFAULT_STATS = [
+    { key: 'projects_completed', target: 0, suffix: '+', label: 'Projects Completed' },
+    { key: 'years_experience', target: 0, suffix: '+', label: 'Years of Experience' },
+    { key: 'professionals', target: 0, suffix: '+', label: 'Professionals' },
 ];
 
 function useCountUp(target, started, duration = 2000) {
@@ -69,7 +70,23 @@ function StatItem({ target, suffix, label, started }) {
 
 export default function StatsStrip() {
     const [started, setStarted] = useState(false);
+    const [stats, setStats] = useState(DEFAULT_STATS);
     const ref = useRef(null);
+
+    useEffect(() => {
+        let active = true;
+        axiosClient.get('/auth/public/landing-stats/')
+            .then((res) => {
+                if (!active) return;
+                const data = res.data || {};
+                setStats((prev) => prev.map((s) => ({
+                    ...s,
+                    target: Number.isFinite(data[s.key]) ? data[s.key] : s.target,
+                })));
+            })
+            .catch(() => {});
+        return () => { active = false; };
+    }, []);
 
     useEffect(() => {
         const el = ref.current;
@@ -111,13 +128,14 @@ export default function StatsStrip() {
                     {stats.map((stat, i) => (
                         <Grid
                             item
-                            xs={6}
-                            md={3}
-                            key={i}
+                            xs={12}
+                            sm={4}
+                            md={4}
+                            key={stat.key}
                             sx={{
                                 borderRight: {
-                                    xs: i % 2 === 0 ? '1px solid #E2E8F0' : 'none',
-                                    md: i < stats.length - 1 ? '1px solid #E2E8F0' : 'none',
+                                    xs: 'none',
+                                    sm: i < stats.length - 1 ? '1px solid #E2E8F0' : 'none',
                                 },
                             }}
                         >

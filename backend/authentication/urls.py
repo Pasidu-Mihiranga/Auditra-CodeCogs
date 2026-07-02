@@ -47,6 +47,7 @@ from .views import (
     AdminKPIView,
     InvitationListView,
     PublicCheckEmailView,
+    PublicLandingStatsView,
     CancelLeaveRequestView,
     LeaveBalanceView,
     LeavePolicyListView,
@@ -106,6 +107,8 @@ urlpatterns = [
     path('invitations/', InvitationListView.as_view(), name='invitations-list'),
     # Feature #7 – public email check (also available under projects/public/check-email)
     path('public/check-email/', PublicCheckEmailView.as_view(), name='public-check-email'),
+    # Public landing-page statistics (projects completed, professionals, years of experience)
+    path('public/landing-stats/', PublicLandingStatsView.as_view(), name='public-landing-stats'),
     # Feature #15 – leave balance + policy + cancel
     path('leave-requests/<int:pk>/cancel/', CancelLeaveRequestView.as_view(), name='cancel-leave-request'),
     path('leave-balance/', LeaveBalanceView.as_view(), name='leave-balance'),

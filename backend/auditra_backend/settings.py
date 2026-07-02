@@ -263,6 +263,9 @@ EMAIL_TIMEOUT = 30  # seconds
 # Frontend URL (used for login links in emails)
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 
+# Company founding year (used to compute "Years of Experience" on the landing page)
+FOUNDING_YEAR = config('FOUNDING_YEAR', default=2010, cast=int)
+
 # PayHere payment gateway settings
 PAYHERE_MERCHANT_ID = config('PAYHERE_MERCHANT_ID', default='1235300')
 PAYHERE_MERCHANT_SECRET = config(
