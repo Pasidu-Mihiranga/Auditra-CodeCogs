@@ -50,6 +50,11 @@
 	<string>We need your location to capture property coordinates for valuations.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>We need your location to capture property coordinates for valuations.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>ValuationLocation</key>
+		<string>Accurate GPS is required to record property coordinates on valuation reports.</string>
+	</dict>
 	<!-- Camera permission for photo capture -->
 	<key>NSCameraUsageDescription</key>
 	<string>We need access to your camera to take photos for valuations.</string>
