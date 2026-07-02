@@ -128,6 +128,14 @@ export default function createAppTheme(mode = 'light') {
           body: {
             transition: 'background-color 0.3s ease, color 0.3s ease',
           },
+          // Hide the stray text caret that appears when clicking non-editable
+          // content, while keeping it for real editable inputs.
+          '*': {
+            caretColor: 'transparent',
+          },
+          'input, textarea, [contenteditable="true"], [contenteditable=""]': {
+            caretColor: 'auto',
+          },
         },
       },
       MuiButton: {
