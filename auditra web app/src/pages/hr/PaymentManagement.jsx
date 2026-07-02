@@ -21,7 +21,6 @@ export default function PaymentManagement() {
   const [genYear, setGenYear] = useState(new Date().getFullYear().toString());
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState('');
 
   const fetchSlips = async () => {
     try {
@@ -75,12 +74,11 @@ export default function PaymentManagement() {
 
   const filteredSlips = slips.filter(s => {
     const monthMatch = !filterMonth || s.month === filterMonth;
-    const yearMatch = !filterYear || String(s.year) === String(filterYear);
     const q = searchQuery.toLowerCase().trim();
     const searchMatch = !q ||
       (s.user_full_name || s.user_username || s.employee_name || '').toLowerCase().includes(q) ||
       String(s.employee_number || s.user || '').toLowerCase().includes(q);
-    return monthMatch && yearMatch && searchMatch;
+    return monthMatch && searchMatch;
   });
 
   if (loading) return <LoadingSpinner />;
@@ -133,13 +131,6 @@ export default function PaymentManagement() {
           </TextField>
           <TextField
             size="small"
-            label="Filter Year"
-            value={filterYear}
-            onChange={(e) => setFilterYear(e.target.value)}
-            sx={{ width: 120 }}
-          />
-          <TextField
-            size="small"
             placeholder="Search by employee name or ID"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -179,7 +170,7 @@ export default function PaymentManagement() {
           </TableHead>
           <TableBody>
             {filteredSlips.length === 0 ? (
-              <TableRow><TableCell colSpan={7} align="center">{searchQuery || filterMonth || filterYear ? 'No matching payment slips found' : 'No payment slips found'}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center">{searchQuery || filterMonth ? 'No matching payment slips found' : 'No payment slips found'}</TableCell></TableRow>
             ) : (
               filteredSlips.map((s) => (
                 <TableRow key={s.id}>
