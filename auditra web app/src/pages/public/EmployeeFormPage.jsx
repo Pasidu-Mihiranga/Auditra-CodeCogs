@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import { Upload, Send, ArrowBack } from '@mui/icons-material';
 import authService from '../../services/authService';
-import { validationRules, validateField, validateForm } from '../../utils/formValidation';
+import { validationRules, validateForm, sanitizePhoneInput } from '../../utils/formValidation';
 import SectionHeading from "../../components/SectionHeading";
 import TypeCard from '../../components/TypeCard';
 
@@ -93,9 +93,15 @@ export default function EmployeeFormPage() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
-    if (fieldErrors[name]) {
-      validateFieldInput(name, value);
-    }
+    // Live validation on every keystroke.
+    validateFieldInput(name, value);
+  };
+
+  // Phone field: block letters/symbols as the user types.
+  const handlePhoneChange = (e) => {
+    const value = sanitizePhoneInput(e.target.value);
+    setForm({ ...form, phone: value });
+    validateFieldInput('phone', value);
   };
 
   const handleFieldBlur = (e) => {
@@ -286,7 +292,8 @@ export default function EmployeeFormPage() {
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth label="Phone" name="phone" value={form.phone}
-                    onChange={handleChange} onBlur={handleFieldBlur} sx={inputSx}
+                    onChange={handlePhoneChange} onBlur={handleFieldBlur} sx={inputSx}
+                    inputProps={{ inputMode: 'tel' }}
                     error={!!fieldErrors.phone} helperText={fieldErrors.phone || ''}
                   />
                 </Grid>

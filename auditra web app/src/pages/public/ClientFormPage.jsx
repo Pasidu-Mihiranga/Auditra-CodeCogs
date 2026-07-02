@@ -7,7 +7,7 @@ import {
   Send, ArrowBack, ArrowForward, PersonOutline, Handshake,
 } from '@mui/icons-material';
 import axiosClient from '../../api/axiosClient';
-import { validationRules, validateForm } from '../../utils/formValidation';
+import { validationRules, validateForm, sanitizePhoneInput } from '../../utils/formValidation';
 import SectionHeading from "../../components/SectionHeading";
 import TypeCard from '../../components/TypeCard';
 
@@ -38,9 +38,16 @@ export default function ClientFormPage() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
-    if (fieldErrors[name]) {
-      validateFieldInput(name, value, regType);
-    }
+    // Live validation: validate on every keystroke, not only after first error.
+    validateFieldInput(name, value, regType);
+  };
+
+  // Phone fields: block letters/symbols as the user types.
+  const handlePhoneChange = (e) => {
+    const { name } = e.target;
+    const value = sanitizePhoneInput(e.target.value);
+    setForm({ ...form, [name]: value });
+    validateFieldInput(name, value, regType);
   };
 
   const handleFieldBlur = (e) => {
@@ -143,7 +150,7 @@ export default function ClientFormPage() {
     const agentRules = {
       ...baseRules,
       agent_name: { validate: (v) => validationRules.name.validate(v, 'Agent Name') },
-      agent_phone: { validate: validationRules.phone.validate },
+      agent_phone: { validate: (v) => (v ? validationRules.phone.validate(v) : { valid: false, error: 'Agent phone is required' }) },
       agent_email: { validate: validationRules.email.validate },
     };
 
@@ -391,7 +398,8 @@ export default function ClientFormPage() {
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth label="Phone" name="phone" value={form.phone}
-                      onChange={handleChange} onBlur={handleFieldBlur} sx={inputSx}
+                      onChange={handlePhoneChange} onBlur={handleFieldBlur} sx={inputSx}
+                      inputProps={{ inputMode: 'tel' }}
                       error={!!fieldErrors.phone} helperText={fieldErrors.phone || ''}
                     />
                   </Grid>
@@ -490,7 +498,8 @@ export default function ClientFormPage() {
                       <Grid item xs={12} sm={6}>
                         <TextField
                           fullWidth label="Agent Phone" name="agent_phone" value={form.agent_phone}
-                          onChange={handleChange} onBlur={handleFieldBlur} required sx={inputSx}
+                          onChange={handlePhoneChange} onBlur={handleFieldBlur} required sx={inputSx}
+                          inputProps={{ inputMode: 'tel' }}
                           error={!!fieldErrors.agent_phone} helperText={fieldErrors.agent_phone || ''}
                         />
                       </Grid>

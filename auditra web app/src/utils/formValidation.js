@@ -134,6 +134,17 @@ export const validationRules = {
 };
 
 /**
+ * Restrict phone input to digits and the common phone characters (+, space, -, parentheses).
+ * Blocks letters and other symbols as the user types.
+ * @param {string} value - Raw input value
+ * @returns {string} - Sanitized value safe to store in state
+ */
+export const sanitizePhoneInput = (value) => {
+  if (!value) return '';
+  return value.replace(/[^0-9+\-()\s]/g, '');
+};
+
+/**
  * Validate entire form object
  * @param {Object} data - Form data to validate
  * @param {Object} fieldRules - Object mapping field names to their validation rules
