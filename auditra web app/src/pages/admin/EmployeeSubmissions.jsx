@@ -111,6 +111,7 @@ export default function EmployeeSubmissions() {
   const [salary, setSalary] = useState('');
   const [hireNotes, setHireNotes] = useState('');
   const [roleSalaries, setRoleSalaries] = useState({});
+  const [hrHeadExists, setHrHeadExists] = useState(false);
 
   /* snackbar */
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -227,6 +228,18 @@ export default function EmployeeSubmissions() {
     setSelectedRole('');
     setSalary('');
     setHireNotes(sub.notes || '');
+    // Only one HR Head is allowed system-wide. Check current occupancy so the
+    // option can be disabled in the dropdown (re-checked each time the dialog opens,
+    // so it re-enables after an HR Head is removed in User Management).
+    (async () => {
+      try {
+        const res = await axiosClient.get('/auth/users/');
+        const list = Array.isArray(res.data) ? res.data : res.data?.users || [];
+        setHrHeadExists(list.some((u) => u.role === 'hr_head'));
+      } catch {
+        setHrHeadExists(false);
+      }
+    })();
   };
 
   const closeHireDialog = () => {
@@ -601,18 +614,21 @@ export default function EmployeeSubmissions() {
               <FormControl fullWidth>
                 <InputLabel>Role</InputLabel>
                 <Select value={selectedRole} label="Role" onChange={handleRoleChange}>
-                  {ROLE_OPTIONS.map((r) => (
-                    <MenuItem key={r.value} value={r.value}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                        <span>{r.label}</span>
-                        {roleSalaries[r.value] !== undefined && (
-                          <Typography variant="body2" sx={{ color: 'text.secondary', ml: 2 }}>
-                            LKR {formatSalary(roleSalaries[r.value])}
-                          </Typography>
-                        )}
-                      </Box>
-                    </MenuItem>
-                  ))}
+                  {ROLE_OPTIONS.map((r) => {
+                    const hrHeadTaken = r.value === 'hr_head' && hrHeadExists;
+                    return (
+                      <MenuItem key={r.value} value={r.value} disabled={hrHeadTaken}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                          <span>{r.label}{hrHeadTaken ? ' (already assigned)' : ''}</span>
+                          {roleSalaries[r.value] !== undefined && (
+                            <Typography variant="body2" sx={{ color: 'text.secondary', ml: 2 }}>
+                              LKR {formatSalary(roleSalaries[r.value])}
+                            </Typography>
+                          )}
+                        </Box>
+                      </MenuItem>
+                    );
+                  })}
                 </Select>
               </FormControl>
 
