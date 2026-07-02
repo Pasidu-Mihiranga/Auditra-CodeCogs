@@ -496,7 +496,12 @@ class OfflineStorageService {
   ///   `<appDocumentsDir>/photos/<valuationLocalId>/photo_<timestamp>.jpg`
   ///
   /// Returns the full path where the photo was saved on disk.
-  static Future<String> savePhotoOffline(File photoFile, String valuationLocalId) async {
+  static Future<String> savePhotoOffline(
+    File photoFile,
+    String valuationLocalId, {
+    double? gpsLat,
+    double? gpsLon,
+  }) async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
       final photosDir = Directory('${appDir.path}/photos/$valuationLocalId');
@@ -522,6 +527,8 @@ class OfflineStorageService {
         'createdAt': DateTime.now().toIso8601String(),
         'syncStatus': 0,
         'serverId': null,
+        if (gpsLat != null) 'gpsLat': gpsLat,
+        if (gpsLon != null) 'gpsLon': gpsLon,
       });
       
       print('💾 Photo saved offline: ${savedFile.path}');
