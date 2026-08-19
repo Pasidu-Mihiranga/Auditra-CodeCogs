@@ -898,8 +898,8 @@ export default function ProjectDetail() {
         </Card>
       )}
 
-      {/* Agent Payment Section - shown when project has an agent */}
-      {isCoordinator && project.has_agent && project.assigned_agent && (
+      {/* Agent Payment Section - shown once the client payment is approved, and from then on */}
+      {isCoordinator && project.has_agent && project.assigned_agent && isPaymentApproved && (
         <Card sx={{ mb: 3 }}>
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>

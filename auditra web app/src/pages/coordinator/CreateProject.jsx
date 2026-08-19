@@ -14,7 +14,29 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import projectService from '../../services/projectService';
 import ProjectDetailsFields from '../../components/ProjectDetailsFields';
 import { extractApiErrorMessage } from '../../utils/helpers';
+import { validationRules, sanitizePhoneInput } from '../../utils/formValidation';
 import { useDocumentManagement } from '../../hooks/useDocumentManagement';
+
+const PHONE_FIELDS = ['client_phone', 'agent_phone'];
+const PRIORITIES = ['high', 'medium', 'low'];
+const LICENSE_NUMBER_REGEX = /^[A-Za-z0-9][A-Za-z0-9/-]{2,29}$/;
+const MAX_ESTIMATED_VALUE = 1000000000;
+
+// Every validated field, in the order they appear in the form.
+const VALIDATED_FIELDS = [
+  'title', 'description', 'priority', 'start_date', 'end_date', 'estimated_value',
+  'client_name', 'client_email', 'client_phone', 'client_company', 'client_address',
+  'agent_name', 'agent_email', 'agent_phone', 'agent_license_number', 'agent_address',
+];
+
+// Fields whose error depends on another field, so they are re-checked together.
+const DEPENDENT_FIELDS = {
+  start_date: ['end_date'],
+  client_email: ['client_name'],
+  agent_email: ['agent_name'],
+};
+
+const fieldsToCheck = (name) => [name, ...(DEPENDENT_FIELDS[name] || [])];
 
 export default function CreateProject() {
   const navigate = useNavigate();
@@ -27,6 +49,7 @@ export default function CreateProject() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [touched, setTouched] = useState({}); // fields the user has already left
   const [form, setForm] = useState({
     title: submissionData?.project_title || '',
     description: submissionData?.project_description || '',
@@ -55,6 +78,8 @@ export default function CreateProject() {
   const [agentEmailMessage, setAgentEmailMessage] = useState('');
   const [dbClient, setDbClient] = useState(null);
 
+  const today = new Date().toISOString().split('T')[0];
+
   // Use document management hook (projectId will be set after project creation)
   const {
     stagedDocuments,
@@ -65,10 +90,117 @@ export default function CreateProject() {
     handleDocNameChange,
   } = useDocumentManagement(null);
 
+  // Validates a single field and returns an error message ('' when the field is fine).
+  const validateSingleField = useCallback((name, rawValue, data, client = dbClient) => {
+    const value = typeof rawValue === 'string' ? rawValue : String(rawValue ?? '');
+    const trimmed = value.trim();
+
+    switch (name) {
+      case 'title': {
+        const r = validationRules.project_title.validate(trimmed);
+        return r.valid ? '' : r.error;
+      }
+      case 'description': {
+        const r = validationRules.project_description.validate(trimmed);
+        return r.valid ? '' : r.error;
+      }
+      case 'priority':
+        return PRIORITIES.includes(trimmed) ? '' : 'Select a priority';
+      case 'start_date':
+        if (!trimmed) return 'Start date is required';
+        if (trimmed < today) return 'Start date must be today or a future date';
+        return '';
+      case 'end_date':
+        if (!trimmed) return 'End date is required';
+        if (data.start_date && trimmed <= data.start_date) return 'End date must be after the start date';
+        return '';
+      case 'estimated_value': {
+        if (!trimmed) return 'Estimated value is required';
+        const amount = Number(trimmed);
+        if (!Number.isFinite(amount)) return 'Estimated value must be a valid number';
+        if (amount <= 0) return 'Estimated value must be greater than zero';
+        if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return 'Estimated value can have at most 2 decimal places';
+        if (amount > MAX_ESTIMATED_VALUE) return 'Estimated value must not exceed Rs. 1,000,000,000';
+        return '';
+      }
+      case 'client_name': {
+        if (!trimmed) return 'Client name is required';
+        const r = validationRules.name.validate(trimmed, 'Client name');
+        if (!r.valid) return r.error;
+        if (client && trimmed.toLowerCase() !== client.full_name.trim().toLowerCase()) {
+          return `Client name must match the registered account: "${client.full_name}"`;
+        }
+        return '';
+      }
+      case 'client_email': {
+        if (!trimmed) return 'Client email is required';
+        const r = validationRules.email.validate(trimmed);
+        return r.valid ? '' : r.error;
+      }
+      case 'agent_email': {
+        if (!trimmed) return '';
+        const r = validationRules.email.validate(trimmed);
+        return r.valid ? '' : r.error;
+      }
+      case 'agent_name': {
+        if (!trimmed) {
+          return data.agent_email.trim() ? 'Agent name is required when an agent email is provided' : '';
+        }
+        const r = validationRules.name.validate(trimmed, 'Agent name');
+        return r.valid ? '' : r.error;
+      }
+      case 'client_phone':
+      case 'agent_phone': {
+        if (!trimmed) return '';
+        const r = validationRules.phone.validate(trimmed);
+        return r.valid ? '' : r.error;
+      }
+      case 'client_address':
+      case 'agent_address': {
+        const r = validationRules.address.validate(trimmed);
+        return r.valid ? '' : r.error;
+      }
+      case 'client_company': {
+        const r = validationRules.company_name.validate(trimmed);
+        return r.valid ? '' : r.error;
+      }
+      case 'agent_license_number':
+        if (!trimmed) return '';
+        return LICENSE_NUMBER_REGEX.test(trimmed)
+          ? ''
+          : 'License number must be 3-30 characters using letters, numbers, hyphens or slashes';
+      default:
+        return '';
+    }
+  }, [today, dbClient]);
+
+  // Recomputes the given fields in an error map. A field only shows an error once it is touched.
+  const applyFieldErrors = useCallback((errors, fields, data, touchedMap, client) => {
+    const next = { ...errors };
+    fields.forEach((field) => {
+      const message = touchedMap[field] ? validateSingleField(field, data[field], data, client) : '';
+      if (message) next[field] = message;
+      else delete next[field];
+    });
+    return next;
+  }, [validateSingleField]);
+
+  // Marks a field as visited, refreshes its error (and any field that depends on it),
+  // and returns that field's own error message.
+  const runFieldValidation = (name, data = form, client = dbClient) => {
+    const nextTouched = { ...touched, [name]: true };
+    setTouched(nextTouched);
+    setFormErrors((prev) => applyFieldErrors(prev, fieldsToCheck(name), data, nextTouched, client));
+    return validateSingleField(name, data[name], data, client);
+  };
+
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
-    if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
+    const { name } = e.target;
+    const value = PHONE_FIELDS.includes(name) ? sanitizePhoneInput(e.target.value) : e.target.value;
+    const nextForm = { ...form, [name]: value };
+    setForm(nextForm);
+    // Untouched fields stay quiet; a field the user already left updates live as it is corrected.
+    setFormErrors((prev) => applyFieldErrors(prev, fieldsToCheck(name), nextForm, touched, dbClient));
 
     // Live validation for client_name if we fetched a dbClient
     if (name === 'client_name' && dbClient) {
@@ -82,15 +214,11 @@ export default function CreateProject() {
     }
   };
 
-  const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const isValidSLPhone = (phone) => {
-    const cleaned = phone.replace(/[\s\-()]/g, '');
-    // +94XXXXXXXXX (12 chars) or 0XXXXXXXXX (10 chars)
-    return /^\+94\d{9}$/.test(cleaned) || /^0\d{9}$/.test(cleaned);
+  // Shows a field's error as soon as the user moves on to the next field.
+  const handleBlur = (e) => {
+    const { name } = e.target;
+    if (name) runFieldValidation(name);
   };
-
-  const today = new Date().toISOString().split('T')[0];
 
   const hasSubmissionAgentDetails = Boolean(
     submissionData?.agent_name || submissionData?.agent_email || submissionData?.agent_phone
@@ -98,57 +226,18 @@ export default function CreateProject() {
   const showAgentSection = !submissionData || hasSubmissionAgentDetails;
 
   const validateForm = () => {
-    const errors = {};
+    const allTouched = {};
+    VALIDATED_FIELDS.forEach((field) => { allTouched[field] = true; });
+    setTouched(allTouched);
 
-    // Date validations
-    if (!form.start_date) {
-      errors.start_date = 'Start date is required';
-    } else if (form.start_date < today) {
-      errors.start_date = 'Start date must be today or a future date';
-    }
+    const errors = applyFieldErrors({}, VALIDATED_FIELDS, form, allTouched, dbClient);
 
-    if (!form.end_date) {
-      errors.end_date = 'End date is required';
-    } else if (form.start_date && form.end_date <= form.start_date) {
-      errors.end_date = 'End date must be after start date';
+    // A role conflict reported by the server blocks submission as well.
+    if (clientEmailStatus === 'mismatch') {
+      errors.client_email = clientEmailMessage || 'This email cannot be used for a client role';
     }
-
-    // Estimated value
-    const val = parseFloat(form.estimated_value);
-    if (!form.estimated_value || isNaN(val) || val <= 0) {
-      errors.estimated_value = 'Estimated value must be greater than zero';
-    }
-
-    // Client name & email required
-    if (!form.client_name.trim()) {
-      errors.client_name = 'Client name is required';
-    } else if (dbClient && form.client_name.trim().toLowerCase() !== dbClient.full_name.trim().toLowerCase()) {
-      errors.client_name = `Client name must match the registered account: "${dbClient.full_name}"`;
-    }
-    if (!form.client_email.trim()) {
-      errors.client_email = 'Client email is required';
-    } else if (!isValidEmail(form.client_email)) {
-      errors.client_email = 'Please enter a valid email';
-    }
-
-    // Client phone validation (if provided)
-    if (form.client_phone.trim() && !isValidSLPhone(form.client_phone)) {
-      errors.client_phone = 'Enter a valid Sri Lankan phone number (e.g. +94771234567)';
-    }
-
-    // Agent validations (only if agent email is provided)
-    if (form.agent_email.trim()) {
-      if (!isValidEmail(form.agent_email)) {
-        errors.agent_email = 'Please enter a valid email';
-      }
-      if (!form.agent_name.trim()) {
-        errors.agent_name = 'Agent name is required when agent email is provided';
-      }
-    }
-
-    // Agent phone validation (if provided)
-    if (form.agent_phone.trim() && !isValidSLPhone(form.agent_phone)) {
-      errors.agent_phone = 'Enter a valid Sri Lankan phone number (e.g. +94771234567)';
+    if (form.agent_email.trim() && agentEmailStatus === 'mismatch') {
+      errors.agent_email = agentEmailMessage || 'This email cannot be used for an agent role';
     }
 
     setFormErrors(errors);
@@ -186,18 +275,30 @@ export default function CreateProject() {
   }, []);
 
   const handleClientEmailBlur = async () => {
+    if (runFieldValidation('client_email')) {
+      setClientEmailStatus(null);
+      setClientEmailMessage('');
+      setDbClient(null);
+      return;
+    }
+
     const user = await checkEmail(form.client_email, 'client', setClientEmailStatus, setClientEmailMessage);
     if (user) {
       setDbClient(user);
       const currentName = form.client_name.trim();
       const dbName = user.full_name.trim();
-      
+
       if (currentName && currentName.toLowerCase() !== dbName.toLowerCase()) {
         setClientEmailStatus('error');
         setClientEmailMessage(`Client name mismatch. Correct name is "${dbName}".`);
+        setTouched((prev) => ({ ...prev, client_name: true }));
+        setFormErrors((prev) => ({
+          ...prev,
+          client_name: `Client name must match the registered account: "${dbName}"`,
+        }));
       } else {
         // If empty or matches, auto-fill details
-        setForm(prev => ({
+        setForm((prev) => ({
           ...prev,
           client_name: dbName,
           client_phone: user.phone || prev.client_phone,
@@ -206,6 +307,7 @@ export default function CreateProject() {
         }));
         setClientEmailStatus('found');
         setClientEmailMessage(`Account found: ${dbName} (${user.email})`);
+        setFormErrors((prev) => { const next = { ...prev }; delete next.client_name; return next; });
       }
     } else {
       setDbClient(null);
@@ -213,9 +315,13 @@ export default function CreateProject() {
   };
 
   const handleAgentEmailBlur = () => {
-    if (form.agent_email) {
-      checkEmail(form.agent_email, 'agent', setAgentEmailStatus, setAgentEmailMessage);
+    const invalid = runFieldValidation('agent_email');
+    if (invalid || !form.agent_email.trim()) {
+      setAgentEmailStatus(null);
+      setAgentEmailMessage('');
+      return;
     }
+    checkEmail(form.agent_email, 'agent', setAgentEmailStatus, setAgentEmailMessage);
   };
 
   const getEmailAdornment = (status) => {
@@ -345,6 +451,11 @@ export default function CreateProject() {
             <ProjectDetailsFields
               form={form}
               onChange={handleChange}
+              onBlur={handleBlur}
+              titleError={formErrors.title}
+              titleHelperText={formErrors.title}
+              descriptionError={formErrors.description}
+              descriptionHelperText={formErrors.description}
               startDateRequired
               endDateRequired
               startDateMin={today}
@@ -370,6 +481,7 @@ export default function CreateProject() {
                   name="client_name"
                   value={form.client_name}
                   onChange={handleChange}
+                  onBlur={handleBlur}
                   required
                   error={!!formErrors.client_name}
                   helperText={formErrors.client_name}
@@ -388,6 +500,7 @@ export default function CreateProject() {
                       setClientEmailStatus(null); 
                       setClientEmailMessage(''); 
                       setDbClient(null);
+                      setFormErrors((prev) => { const next = { ...prev }; delete next.client_name; return next; });
                     }
                   }}
                   onBlur={handleClientEmailBlur}
@@ -409,13 +522,36 @@ export default function CreateProject() {
                   name="client_phone"
                   value={form.client_phone}
                   onChange={handleChange}
+                  onBlur={handleBlur}
                   placeholder="+94XXXXXXXXX"
                   error={!!formErrors.client_phone}
                   helperText={formErrors.client_phone}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}><TextField fullWidth label="Company" name="client_company" value={form.client_company} onChange={handleChange} /></Grid>
-              <Grid item xs={12}><TextField fullWidth label="Client Address" name="client_address" value={form.client_address} onChange={handleChange} /></Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Company"
+                  name="client_company"
+                  value={form.client_company}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  error={!!formErrors.client_company}
+                  helperText={formErrors.client_company}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Client Address"
+                  name="client_address"
+                  value={form.client_address}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  error={!!formErrors.client_address}
+                  helperText={formErrors.client_address}
+                />
+              </Grid>
             </Grid>
             {clientEmailStatus === 'not_found' && form.client_email && (
               <Alert severity="info" sx={{ mt: 2 }}>
@@ -441,6 +577,7 @@ export default function CreateProject() {
                     name="agent_name"
                     value={form.agent_name}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     error={!!formErrors.agent_name}
                     helperText={formErrors.agent_name}
                   />
@@ -474,13 +611,36 @@ export default function CreateProject() {
                     name="agent_phone"
                     value={form.agent_phone}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     placeholder="+94XXXXXXXXX"
                     error={!!formErrors.agent_phone}
                     helperText={formErrors.agent_phone}
                   />
                 </Grid>
-                <Grid item xs={12} sm={4}><TextField fullWidth label="License Number" name="agent_license_number" value={form.agent_license_number} onChange={handleChange} /></Grid>
-                <Grid item xs={12} sm={4}><TextField fullWidth label="Agent Address" name="agent_address" value={form.agent_address} onChange={handleChange} /></Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="License Number"
+                    name="agent_license_number"
+                    value={form.agent_license_number}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={!!formErrors.agent_license_number}
+                    helperText={formErrors.agent_license_number}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Agent Address"
+                    name="agent_address"
+                    value={form.agent_address}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={!!formErrors.agent_address}
+                    helperText={formErrors.agent_address}
+                  />
+                </Grid>
               </Grid>
               {agentEmailStatus === 'not_found' && form.agent_email && (
                 <Alert severity="info" sx={{ mt: 2 }}>
