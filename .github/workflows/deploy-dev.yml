@@ -38,7 +38,10 @@ jobs:
           EXPECTED_IP=159.65.1.78
           echo "Runner egress IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
 
-          RESOLVED=$(getent hosts "$VPS_HOST" 2>/dev/null | awk '{print $1}' | head -1)
+          # getent hosts does a PTR lookup for numeric addresses and returns
+          # nothing when there is no reverse record, so use ahostsv4, which
+          # handles bare IPs and hostnames alike.
+          RESOLVED=$(getent ahostsv4 "$VPS_HOST" 2>/dev/null | awk '{print $1}' | head -1)
           if [ -z "$RESOLVED" ]; then
             echo "::error::VPS_HOST does not resolve to any address."
             exit 1
