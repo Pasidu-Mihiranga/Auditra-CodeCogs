@@ -30,47 +30,32 @@ jobs:
           npm ci
           npm run build
 
-      # Fails fast with an actionable message instead of a bare i/o timeout
-      # inside the scp action. Compares the secrets against the known-live
-      # values and reports only match/mismatch, never the secret itself.
+      # Fails fast with an actionable message instead of the bare
+      # "dial tcp ***:22: i/o timeout" that scp-action emits, which gives no
+      # way to tell a bad VPS_HOST apart from a blocked port.
       - name: Preflight SSH reachability check
         run: |
-          EXPECTED_IP=159.65.1.78
           echo "Runner egress IP: $(curl -s --max-time 10 https://api.ipify.org || echo unknown)"
 
           # getent hosts does a PTR lookup for numeric addresses and returns
           # nothing when there is no reverse record, so use ahostsv4, which
           # handles bare IPs and hostnames alike.
-          RESOLVED=$(getent ahostsv4 "$VPS_HOST" 2>/dev/null | awk '{print $1}' | head -1)
-          if [ -z "$RESOLVED" ]; then
-            echo "::error::VPS_HOST does not resolve to any address."
+          if ! getent ahostsv4 "$VPS_HOST" >/dev/null 2>&1; then
+            echo "::error::VPS_HOST does not resolve to any address. Check the secret."
             exit 1
-          fi
-          if [ "$RESOLVED" = "$EXPECTED_IP" ]; then
-            echo "VPS_HOST resolves to the expected live droplet IP."
-          else
-            echo "::error::VPS_HOST resolves to an address that is NOT the live droplet."
-            echo "Expected the droplet at $EXPECTED_IP. Update the VPS_HOST secret."
-            exit 1
-          fi
-
-          if [ "$VPS_USERNAME" = "root" ]; then
-            echo "VPS_USERNAME is root (matches the account whose key is authorized)."
-          else
-            echo "::warning::VPS_USERNAME is NOT root. Confirm that account has the deploy key in its authorized_keys."
           fi
 
           if timeout 15 bash -c "cat < /dev/null > /dev/tcp/$VPS_HOST/$VPS_SSH_PORT" 2>/dev/null; then
             echo "TCP connect to port $VPS_SSH_PORT succeeded."
           else
-            echo "::error::Host resolves correctly but port $VPS_SSH_PORT is unreachable from this runner."
-            echo "The droplet firewall (ufw) is open, so check for a DigitalOcean Cloud Firewall"
-            echo "under Networking -> Firewalls. It filters upstream and is invisible from inside the VM."
+            echo "::error::VPS_HOST resolves but port $VPS_SSH_PORT is unreachable from this runner."
+            echo "Check, in order: the VPS_HOST secret still points at the live droplet;"
+            echo "any DigitalOcean Cloud Firewall (it filters upstream and is invisible"
+            echo "from inside the VM); then ufw and sshd on the droplet itself."
             exit 1
           fi
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
 
       - name: Copy files to VPS via SCP
         uses: appleboy/scp-action@v0.1.7
