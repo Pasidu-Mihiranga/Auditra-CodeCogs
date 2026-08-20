@@ -45,6 +45,7 @@ export default function MyLeaveRequests() {
   const [tab, setTab] = useState(0);
   const [form, setForm] = useState(defaultForm);
   const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const getTodayDateString = () => {
     const today = new Date();
@@ -86,7 +87,21 @@ export default function MyLeaveRequests() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const validateForm = () => {
+    const errors = {};
+    if (form.is_half_day) {
+      if (!form.start_date) errors.start_date = 'Date is required';
+    } else {
+      if (!form.start_date) errors.start_date = 'Start date is required';
+      if (!form.end_date) errors.end_date = 'End date is required';
+    }
+    if (!form.reason.trim()) errors.reason = 'Reason is required';
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async () => {
+    if (!validateForm()) return;
     setSubmitting(true);
     setError('');
     try {
@@ -99,6 +114,7 @@ export default function MyLeaveRequests() {
       setSuccess('Leave request submitted!');
       setDialogOpen(false);
       setForm(defaultForm);
+      setFieldErrors({});
       fetchData();
     } catch (err) {
       setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to submit');
@@ -244,7 +260,7 @@ export default function MyLeaveRequests() {
       </TableContainer>
 
       {/* New Request Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setFieldErrors({}); }} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 600 }}>New Leave Request</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -269,9 +285,13 @@ export default function MyLeaveRequests() {
               <>
                 <Grid item xs={6}>
                   <TextField fullWidth label="Date" type="date" value={form.start_date}
-                    onChange={(e) => setForm({ ...form, start_date: e.target.value, end_date: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, start_date: e.target.value, end_date: e.target.value });
+                      if (fieldErrors.start_date) setFieldErrors({ ...fieldErrors, start_date: undefined });
+                    }}
                     InputLabelProps={{ shrink: true }}
-                    inputProps={{ min: todayStr }} required />
+                    inputProps={{ min: todayStr }} required
+                    error={!!fieldErrors.start_date} helperText={fieldErrors.start_date} />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField select fullWidth label="Period" value={form.half_day_period}
@@ -285,21 +305,33 @@ export default function MyLeaveRequests() {
               <>
                 <Grid item xs={6}>
                   <TextField fullWidth label="Start Date" type="date" value={form.start_date}
-                    onChange={(e) => handleStartDateChange(e.target.value)}
+                    onChange={(e) => {
+                      handleStartDateChange(e.target.value);
+                      if (fieldErrors.start_date) setFieldErrors({ ...fieldErrors, start_date: undefined });
+                    }}
                     InputLabelProps={{ shrink: true }}
-                    inputProps={{ min: todayStr }} required />
+                    inputProps={{ min: todayStr }} required
+                    error={!!fieldErrors.start_date} helperText={fieldErrors.start_date} />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField fullWidth label="End Date" type="date" value={form.end_date}
-                    onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, end_date: e.target.value });
+                      if (fieldErrors.end_date) setFieldErrors({ ...fieldErrors, end_date: undefined });
+                    }}
                     InputLabelProps={{ shrink: true }}
-                    inputProps={{ min: form.start_date || todayStr }} required />
+                    inputProps={{ min: form.start_date || todayStr }} required
+                    error={!!fieldErrors.end_date} helperText={fieldErrors.end_date} />
                 </Grid>
               </>
             )}
             <Grid item xs={12}>
               <TextField fullWidth label="Reason" value={form.reason} multiline rows={3}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
+                onChange={(e) => {
+                  setForm({ ...form, reason: e.target.value });
+                  if (fieldErrors.reason) setFieldErrors({ ...fieldErrors, reason: undefined });
+                }}
+                required error={!!fieldErrors.reason} helperText={fieldErrors.reason} />
             </Grid>
           </Grid>
         </DialogContent>
