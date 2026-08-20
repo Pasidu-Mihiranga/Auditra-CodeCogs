@@ -13,7 +13,6 @@ import '../models/project_model.dart';
 import 'login_screen.dart';
 import 'change_password_screen.dart';
 import 'valuation_form_screen.dart';
-import 'payment_slips_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
 // import 'field_officer/components/field_officer_header.dart'; // Removed
@@ -1250,20 +1249,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const ChangePasswordScreen(),
-                    ),
-                  );
-                },
-                isDark: isDark,
-              ),
-              const SizedBox(width: 12),
-              _buildQuickActionCard(
-                icon: Icons.receipt_long_rounded,
-                color: Colors.blue,
-                title: 'Payment Slips',
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const PaymentSlipsScreen(),
                     ),
                   );
                 },
