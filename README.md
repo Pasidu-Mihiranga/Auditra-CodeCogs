@@ -22,6 +22,70 @@ Auditra/
 | Mobile App | Flutter 3.10+, Provider, Hive, web_socket_channel                   |
 | Email      | SendGrid                                                             |
 
+### Diagram Notation
+
+The three diagrams that follow share a single notation.
+
+![Notation legend](architecture-diagrams/figure0-notation-legend.png)
+
+### System Structure
+
+![Layered structure of the system](architecture-diagrams/figure1-layered-structure.png)
+
+The system is divided into four tiers. Two client applications, a React web
+dashboard used by office and management roles and a Flutter mobile application
+used by field officers, communicate with a single Daphne ASGI server. That
+server terminates ordinary HTTP traffic through Django REST Framework and
+WebSocket traffic through Django Channels within the same process. Behind it,
+nine Django applications each own a distinct area of the business domain and
+share a PostgreSQL database, a media file store for photographs and documents,
+a Redis instance acting as both channel layer and task broker, and Celery for
+background processing. SendGrid, Firebase Cloud Messaging, and PayHere are
+reached over outbound HTTPS.
+
+Auditra is therefore one consolidated backend serving two clients, not two
+systems. Because both protocols terminate in the same server, a REST request
+and a WebSocket connection authenticate against the same JWT identity, and
+because all nine modules share one database, the system keeps a single
+consistent view of its data.
+
+### Effects of a Single Write
+
+![Effects produced by a single write](architecture-diagrams/figure2-write-fanout.png)
+
+One state-changing action, such as approving a valuation, produces several
+distinct effects, only one of which the user waits for. The synchronous path
+runs from the client to the Daphne server, where JWT middleware establishes
+identity, into a Django REST Framework view that checks permissions and
+validates input, and on to the domain service, which writes through the ORM to
+PostgreSQL before the response returns.
+
+The dashed paths continue after that response has been sent. The same domain
+service pushes a message to Redis, which broadcasts it to the WebSocket
+consumer for delivery to connected clients and queues a task for a Celery
+worker to contact SendGrid and Firebase Cloud Messaging. This is why updates
+appear on other users' screens without a refresh, and why a slow third-party
+service cannot delay an API response.
+
+### Offline Capture and Synchronisation
+
+![Offline capture and synchronisation](architecture-diagrams/figure3-offline-sync.png)
+
+Field officers frequently work at sites without connectivity. When a valuation
+is captured along with its photographs and GPS coordinates, the application
+checks whether the network is available. If it is, the record goes directly to
+the valuations endpoint and is persisted to PostgreSQL. If it is not, the
+record is written to a local Hive store on the device and placed in a pending
+queue. A sync engine monitors connectivity and transmits queued records once
+the network returns, retrying on an exponential backoff schedule so repeated
+failures do not overwhelm the server.
+
+Capturing data is deliberately decoupled from transmitting it, so connectivity
+is never a precondition for field work. Each record is persisted with the
+originating device identifier and its true capture time rather than its upload
+time, so the audit trail continues to reflect where and when the work was
+genuinely performed.
+
 ## User Roles
 
 | Role              | Web App                 | Mobile App              |
