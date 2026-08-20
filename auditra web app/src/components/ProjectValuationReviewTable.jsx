@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import {
   PictureAsPdf,
+  EventNote,
   KeyboardArrowDown,
   KeyboardArrowUp,
   Person,
@@ -76,6 +77,7 @@ export default function ProjectValuationReviewTable({
   expandedRow,
   projectValuations,
   onToggleExpand,
+  onStandups,
   renderValuationActions,
   renderValuationStatusChip,
   showAccessorComments = false,
@@ -165,6 +167,19 @@ export default function ProjectValuationReviewTable({
                     <TableCell colSpan={colCount} sx={{ py: 0, borderBottom: isExpanded ? undefined : 'none' }}>
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                         <Box sx={{ py: 3, px: 3 }}>
+                          {onStandups && (
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<EventNote />}
+                                onClick={(e) => { e.stopPropagation(); onStandups(project.id); }}
+                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                              >
+                                Standups
+                              </Button>
+                            </Box>
+                          )}
                           <Box sx={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflowX: 'auto', mb: 3 }}>
                             <Box sx={{ minWidth: 200, flex: '1 1 auto' }}>
                               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
